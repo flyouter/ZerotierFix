@@ -8,6 +8,7 @@ greendao {
     daoPackage 'net.kaaass.zerotierfix.model'
 }
 
+// 版本号手动维护：<App 版本>+core.<ZeroTier 核心版本>
 android {
     compileSdkVersion rootProject.ext.compileSdkVersion
 
@@ -15,8 +16,8 @@ android {
         applicationId "net.kaaass.zerotierfix"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 15
-        versionName "1.16.2"
+        versionCode 16
+        versionName "1.0.11+core.1.16.2"
         multiDexEnabled true
 
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
