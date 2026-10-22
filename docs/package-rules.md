@@ -71,7 +71,7 @@
 | 事件 DTO 化 | `NetworkListReplyEvent`、`NodeStatusEvent`、`PeerInfoReplyEvent`、`VirtualNetworkConfigChangedEvent`、`VirtualNetworkConfigReplyEvent`、`NetworkReconfigureEvent` 全部改用 DTO |
 | 新 DTO | `VirtualNetworkConfigDto`、`VirtualNetworkDnsDto`、`NodeStatusDto`、`PeerInfoDto` |
 | SDK 映射 | `vpn/config/VirtualNetworkConfigMapper`、`vpn/node/NodeInfoMapper` |
-| 枚举清理 | 枚举不再引用 `R` / SDK；新增 `PeerRole`；修正 `NetworkType.fromInt`（0→UNKNOWN、1→PRIVATE、2→PUBLIC） |
+| 枚举清理 | 枚举不再引用 `R` / SDK；新增 `PeerRole`；`NetworkType` / `NetworkStatus` / `PeerRole` 不再持久化，移除无用的 `fromInt` / `toInt`，仅 `DNSMode` 保留 |
 | 文案映射 | `ui/common/EnumTextFormatter` |
 | 废弃事件 | 删除 `ErrorEvent`、`JoinNetworkEvent`、`LeaveNetworkEvent` |
 | Service 拆分 | 抽出 `vpn/config/DnsConfigurator`、`service/VpnNotificationController`，`ZeroTierOneService` 降至约 980 行 |

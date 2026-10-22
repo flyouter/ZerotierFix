@@ -127,7 +127,6 @@ public final class NetworkRepositoryImpl implements NetworkRepository {
                         request.getNetworkIdStr(),
                         null,
                         false,
-                        false,
                         request.getNetworkId()
                 ));
                 added[0] = true;
@@ -201,7 +200,6 @@ public final class NetworkRepositoryImpl implements NetworkRepository {
                 if (network == null) {
                     return;
                 }
-                this.database.assignedAddressDao().deleteByNetworkId(networkId);
                 this.database.dnsServerDao().deleteByNetworkId(networkId);
                 this.database.networkConfigDao().deleteById(network.getNetworkConfigId());
                 this.database.networkDao().delete(network);

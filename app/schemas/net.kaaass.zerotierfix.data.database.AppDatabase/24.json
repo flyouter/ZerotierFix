@@ -1,0 +1,158 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 24,
+    "identityHash": "5147b0c3923106a52f5d8395e56a2c8a",
+    "entities": [
+      {
+        "tableName": "APP_NODE",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`_id` INTEGER, `NODE_ID_STR` TEXT, PRIMARY KEY(`_id`))",
+        "fields": [
+          {
+            "fieldPath": "nodeId",
+            "columnName": "_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "nodeIdStr",
+            "columnName": "NODE_ID_STR",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "_id"
+          ]
+        }
+      },
+      {
+        "tableName": "DNS_SERVER",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`_id` INTEGER, `NETWORK_ID` INTEGER, `NAMESERVER` TEXT, PRIMARY KEY(`_id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "networkId",
+            "columnName": "NETWORK_ID",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "nameserver",
+            "columnName": "NAMESERVER",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "_id"
+          ]
+        }
+      },
+      {
+        "tableName": "MOON_ORBIT",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`_id` INTEGER, `MOON_SEED` INTEGER, `FROM_FILE` INTEGER NOT NULL, PRIMARY KEY(`_id`))",
+        "fields": [
+          {
+            "fieldPath": "moonWorldId",
+            "columnName": "_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "moonSeed",
+            "columnName": "MOON_SEED",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "fromFile",
+            "columnName": "FROM_FILE",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "_id"
+          ]
+        }
+      },
+      {
+        "tableName": "NETWORK",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`_id` INTEGER, `NETWORK_ID_STR` TEXT, `NETWORK_NAME` TEXT, `LAST_ACTIVATED` INTEGER NOT NULL, `NETWORK_CONFIG_ID` INTEGER NOT NULL, PRIMARY KEY(`_id`))",
+        "fields": [
+          {
+            "fieldPath": "networkId",
+            "columnName": "_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "networkIdStr",
+            "columnName": "NETWORK_ID_STR",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "networkName",
+            "columnName": "NETWORK_NAME",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "lastActivated",
+            "columnName": "LAST_ACTIVATED",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "networkConfigId",
+            "columnName": "NETWORK_CONFIG_ID",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "_id"
+          ]
+        }
+      },
+      {
+        "tableName": "NETWORK_CONFIG",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`_id` INTEGER, `ROUTE_VIA_ZERO_TIER` INTEGER NOT NULL, `DNS_MODE` INTEGER NOT NULL, PRIMARY KEY(`_id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "routeViaZeroTier",
+            "columnName": "ROUTE_VIA_ZERO_TIER",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dnsMode",
+            "columnName": "DNS_MODE",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "_id"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '5147b0c3923106a52f5d8395e56a2c8a')"
+    ]
+  }
+}

@@ -20,13 +20,12 @@ import java.util.List;
 @Database(
         entities = {
                 AppNode.class,
-                AssignedAddress.class,
                 DnsServer.class,
                 MoonOrbit.class,
                 Network.class,
                 NetworkConfig.class
         },
-        version = 23,
+        version = 24,
         exportSchema = true
 )
 public abstract class AppDatabase extends RoomDatabase {
@@ -36,8 +35,6 @@ public abstract class AppDatabase extends RoomDatabase {
     private static volatile AppDatabase instance;
 
     public abstract AppNodeDao appNodeDao();
-
-    public abstract AssignedAddressDao assignedAddressDao();
 
     public abstract DnsServerDao dnsServerDao();
 

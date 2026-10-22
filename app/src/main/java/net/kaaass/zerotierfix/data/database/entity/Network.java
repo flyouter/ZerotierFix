@@ -5,8 +5,12 @@ import androidx.room.Entity;
 import androidx.room.Ignore;
 import androidx.room.PrimaryKey;
 
+/**
+ * 已加入的 ZeroTier 网络。
+ */
 @Entity(tableName = "NETWORK")
 public class Network {
+
     /**
      * 网络 ID（十进制），主键。
      */
@@ -27,13 +31,6 @@ public class Network {
     private String networkName;
 
     /**
-     * 旧版默认路由标记，已废弃。
-     */
-    @Deprecated
-    @ColumnInfo(name = "USE_DEFAULT_ROUTE")
-    private boolean useDefaultRoute;
-
-    /**
      * 是否为最近一次激活的网络。
      */
     @ColumnInfo(name = "LAST_ACTIVATED")
@@ -46,24 +43,17 @@ public class Network {
     private long networkConfigId;
 
     /**
-     * 旧版连接状态标记，已废弃。
-     */
-    @Ignore
-    @Deprecated
-    private boolean connected;
-
-    /**
-     * 关联的网络配置，由 {@link net.kaaass.zerotierfix.data.database.AppDatabase} 的查询方法填充。
+     * 关联的网络配置，由 {@link net.kaaass.zerotierfix.data.database.AppDatabase}
+     * 的查询方法填充。
      */
     @Ignore
     private NetworkConfig networkConfig;
 
-    public Network(Long networkId, String networkIdStr, String networkName, boolean useDefaultRoute,
-            boolean lastActivated, long networkConfigId) {
+    public Network(Long networkId, String networkIdStr, String networkName,
+                   boolean lastActivated, long networkConfigId) {
         this.networkId = networkId;
         this.networkIdStr = networkIdStr;
         this.networkName = networkName;
-        this.useDefaultRoute = useDefaultRoute;
         this.lastActivated = lastActivated;
         this.networkConfigId = networkConfigId;
     }
@@ -95,16 +85,6 @@ public class Network {
         this.networkName = networkName;
     }
 
-    @Deprecated
-    public boolean getUseDefaultRoute() {
-        return this.useDefaultRoute;
-    }
-
-    @Deprecated
-    public void setUseDefaultRoute(boolean useDefaultRoute) {
-        this.useDefaultRoute = useDefaultRoute;
-    }
-
     public boolean getLastActivated() {
         return this.lastActivated;
     }
@@ -119,16 +99,6 @@ public class Network {
 
     public void setNetworkConfigId(long networkConfigId) {
         this.networkConfigId = networkConfigId;
-    }
-
-    @Deprecated
-    public boolean getConnected() {
-        return this.connected;
-    }
-
-    @Deprecated
-    public void setConnected(boolean connected) {
-        this.connected = connected;
     }
 
     public NetworkConfig getNetworkConfig() {

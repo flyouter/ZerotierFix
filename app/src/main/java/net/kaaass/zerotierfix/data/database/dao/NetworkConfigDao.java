@@ -3,7 +3,6 @@ package net.kaaass.zerotierfix.data.database.dao;
 import net.kaaass.zerotierfix.data.database.entity.*;
 
 import androidx.room.Dao;
-import androidx.room.Delete;
 import androidx.room.Insert;
 import androidx.room.OnConflictStrategy;
 import androidx.room.Query;
@@ -20,9 +19,6 @@ public interface NetworkConfigDao {
 
     @Update
     void update(NetworkConfig networkConfig);
-
-    @Delete
-    void delete(NetworkConfig networkConfig);
 
     @Query("DELETE FROM NETWORK_CONFIG WHERE _id = :id")
     void deleteById(long id);
