@@ -43,6 +43,25 @@ jobs:
         with:
           name: App bundle
           path: app/build/outputs/apk/debug/app-debug.apk
+      - name: Validate signing secrets
+        if: github.event_name != 'pull_request'
+        shell: bash
+        env:
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+          ALIAS: ${{ secrets.ALIAS }}
+          KEY_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
+        run: |
+          missing=0
+          for name in SIGNING_KEY ALIAS KEY_STORE_PASSWORD; do
+            value="${!name}"
+            if [ -z "$value" ]; then
+              echo "::error::Secret $name is not configured for this repository"
+              missing=1
+            else
+              echo "$name: configured (${#value} chars)"
+            fi
+          done
+          exit $missing
       # https://github.com/r0adkll/sign-android-release/issues/84#issuecomment-1889636075
       - name: Setup build tool version variable
         shell: bash
