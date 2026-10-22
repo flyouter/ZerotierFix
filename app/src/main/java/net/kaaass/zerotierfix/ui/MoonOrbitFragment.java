@@ -32,9 +32,8 @@ import net.kaaass.zerotierfix.ZerotierFixApplication;
 import net.kaaass.zerotierfix.events.AddMoonOrbitEvent;
 import net.kaaass.zerotierfix.events.OrbitMoonEvent;
 import net.kaaass.zerotierfix.events.RemoveMoonOrbitEvent;
-import net.kaaass.zerotierfix.model.DaoSession;
+import net.kaaass.zerotierfix.model.AppDatabase;
 import net.kaaass.zerotierfix.model.MoonOrbit;
-import net.kaaass.zerotierfix.model.MoonOrbitDao;
 import net.kaaass.zerotierfix.util.FileUtil;
 
 import org.apache.commons.io.FileUtils;
@@ -185,8 +184,7 @@ public class MoonOrbitFragment extends Fragment {
      * 获得 Moon 入轨配置列表
      */
     private List<MoonOrbit> getMoonOrbitList() {
-        DaoSession daoSession = ((ZerotierFixApplication) requireActivity().getApplication()).getDaoSession();
-        return daoSession.getMoonOrbitDao().loadAll();
+        return ((ZerotierFixApplication) requireActivity().getApplication()).getDatabase().moonOrbitDao().loadAll();
     }
 
     /**
@@ -306,11 +304,8 @@ public class MoonOrbitFragment extends Fragment {
         boolean fromFile = event.isFromFile();
         Log.i(TAG, "add orbit info " + Long.toHexString(moonWorldId));
         // 数据库修改
-        DaoSession daoSession = ((ZerotierFixApplication) requireActivity().getApplication()).getDaoSession();
-        long existCount = daoSession.getMoonOrbitDao().queryBuilder()
-                .where(MoonOrbitDao.Properties.MoonWorldId.eq(moonWorldId))
-                .buildCount()
-                .count();
+        AppDatabase database = ((ZerotierFixApplication) requireActivity().getApplication()).getDatabase();
+        long existCount = database.moonOrbitDao().countByWorldId(moonWorldId);
         if (existCount > 0) {
             Toast.makeText(getContext(), R.string.moon_orbit_exist, Toast.LENGTH_SHORT).show();
             FileUtil.clearTempFile(requireContext());
@@ -326,7 +321,7 @@ public class MoonOrbitFragment extends Fragment {
             FileUtil.clearTempFile(requireContext());
         }
         MoonOrbit moonOrbit = new MoonOrbit(moonWorldId, moonSeed, fromFile);
-        daoSession.getMoonOrbitDao().insert(moonOrbit);
+        database.moonOrbitDao().insert(moonOrbit);
         // 关闭窗口并提示
         if (this.providerDialog != null) {
             this.providerDialog.dismiss();
@@ -352,16 +347,15 @@ public class MoonOrbitFragment extends Fragment {
         long moonSeed = event.getMoonSeed();
         Log.i(TAG, "remove orbit info " + Long.toHexString(moonWorldId));
         // 查询待删除项目
-        DaoSession daoSession = ((ZerotierFixApplication) requireActivity().getApplication()).getDaoSession();
-        MoonOrbit moonOrbit = daoSession.getMoonOrbitDao().queryBuilder()
-                .where(MoonOrbitDao.Properties.MoonWorldId.eq(moonWorldId),
-                        MoonOrbitDao.Properties.MoonSeed.eq(moonSeed))
-                .build()
-                .unique();
+        AppDatabase database = ((ZerotierFixApplication) requireActivity().getApplication()).getDatabase();
+        MoonOrbit moonOrbit = database.moonOrbitDao().findByWorldAndSeed(moonWorldId, moonSeed);
+        if (moonOrbit == null) {
+            return;
+        }
         // 删除缓存文件
         moonOrbit.deleteCacheFile(requireContext());
         // 删除记录
-        daoSession.delete(moonOrbit);
+        database.moonOrbitDao().delete(moonOrbit);
         Snackbar.make(requireView(), R.string.moon_orbit_delete_success, BaseTransientBottomBar.LENGTH_SHORT).show();
         // 更新界面
         updateOrbitList();

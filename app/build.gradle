@@ -2,23 +2,9 @@ plugins {
     id 'com.android.application'
 }
 
-// greenDAO 代码生成。原 org.greenrobot.greendao 插件在 AGP 9 上无法应用，
-// 由其代码生成器 greendao-code-modifier 直接驱动，见 buildSrc。
-def greendaoSchemaVersion = 22
-def greendaoDaoPackage = 'net.kaaass.zerotierfix.model'
-
-def greendaoGenerate = tasks.register('greendaoGenerate', buildlogic.GreendaoGenerateTask) {
-    sourceFiles.from(fileTree('src/main/java') { include '**/*.java' })
-    schemaVersion.set(greendaoSchemaVersion)
-    daoPackage.set(greendaoDaoPackage)
-    outputDir.set(layout.buildDirectory.dir('generated/source/greendao'))
-}
-
-androidComponents {
-    onVariants(selector().all()) { variant ->
-        variant.sources.java?.addGeneratedSourceDirectory(
-                greendaoGenerate, { task -> task.outputDir } as kotlin.jvm.functions.Function1)
-    }
+// Room 导出的 schema，用于校验和后续迁移
+tasks.withType(JavaCompile).configureEach {
+    options.compilerArgs += ["-Aroom.schemaLocation=${projectDir}/schemas"]
 }
 
 // 版本号手动维护：<App 版本>+core.<ZeroTier 核心版本>
@@ -85,7 +71,8 @@ dependencies {
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test.ext:junit:1.3.0'
     androidTestImplementation 'androidx.test.espresso:espresso-core:3.7.0'
-    implementation 'org.greenrobot:greendao:3.3.0'
+    implementation 'androidx.room:room-runtime:2.8.5'
+    annotationProcessor 'androidx.room:room-compiler:2.8.5'
     implementation 'org.greenrobot:eventbus:3.3.1'
     implementation 'commons-validator:commons-validator:1.11.0'
     //noinspection AnnotationProcessorOnCompilePath

@@ -52,7 +52,6 @@ import net.kaaass.zerotierfix.events.VirtualNetworkConfigRequestEvent;
 import net.kaaass.zerotierfix.model.AppNode;
 import net.kaaass.zerotierfix.model.MoonOrbit;
 import net.kaaass.zerotierfix.model.Network;
-import net.kaaass.zerotierfix.model.NetworkDao;
 import net.kaaass.zerotierfix.model.type.DNSMode;
 import net.kaaass.zerotierfix.ui.NetworkListActivity;
 import net.kaaass.zerotierfix.util.Constants;
@@ -288,11 +287,8 @@ public class ZeroTierOneService extends VpnService implements Runnable, EventLis
             // 默认启用最近一次启动的网络
             DatabaseUtils.readLock.lock();
             try {
-                var daoSession = ((ZerotierFixApplication) getApplication()).getDaoSession();
-                daoSession.clear();
-                var lastActivatedNetworks = daoSession.getNetworkDao().queryBuilder()
-                        .where(NetworkDao.Properties.LastActivated.eq(true))
-                        .list();
+                var lastActivatedNetworks = ((ZerotierFixApplication) getApplication())
+                        .getDatabase().loadLastActivatedNetworks();
                 if (lastActivatedNetworks == null || lastActivatedNetworks.isEmpty()) {
                     Log.e(TAG, "Couldn't find last activated connection");
                     return START_NOT_STICKY;
@@ -373,9 +369,8 @@ public class ZeroTierOneService extends VpnService implements Runnable, EventLis
                     DatabaseUtils.writeLock.lock();
                     try {
                         var appNodeDao = ((ZerotierFixApplication) getApplication())
-                                .getDaoSession().getAppNodeDao();
-                        var nodesList = appNodeDao.queryBuilder().build()
-                                .forCurrentThread().list();
+                                .getDatabase().appNodeDao();
+                        var nodesList = appNodeDao.loadAll();
                         if (nodesList.isEmpty()) {
                             var appNode = new AppNode();
                             appNode.setNodeId(address);
@@ -385,7 +380,7 @@ public class ZeroTierOneService extends VpnService implements Runnable, EventLis
                             var appNode = nodesList.get(0);
                             appNode.setNodeId(address);
                             appNode.setNodeIdStr(String.format("%10x", address));
-                            appNodeDao.save(appNode);
+                            appNodeDao.update(appNode);
                         }
                     } finally {
                         DatabaseUtils.writeLock.unlock();
@@ -718,16 +713,12 @@ public class ZeroTierOneService extends VpnService implements Runnable, EventLis
         DatabaseUtils.writeLock.lock();
         try {
             // 查找网络 ID 对应的配置
-            var networkDao = ((ZerotierFixApplication) getApplication())
-                    .getDaoSession()
-                    .getNetworkDao();
-            var matchedNetwork = networkDao.queryBuilder()
-                    .where(NetworkDao.Properties.NetworkId.eq(networkId))
-                    .list();
-            if (matchedNetwork.size() != 1) {
+            var network = ((ZerotierFixApplication) getApplication())
+                    .getDatabase()
+                    .loadNetwork(networkId);
+            if (network == null) {
                 throw new IllegalStateException("Database is inconsistent");
             }
-            var network = matchedNetwork.get(0);
             // 根据当前网络状态确定更改配置的行为
             switch (op) {
                 case VIRTUAL_NETWORK_CONFIG_OPERATION_UP:
@@ -761,7 +752,7 @@ public class ZeroTierOneService extends VpnService implements Runnable, EventLis
         if (networkName != null && !networkName.isEmpty()) {
             network.setNetworkName(networkName);
         }
-        network.update();
+        ((ZerotierFixApplication) getApplication()).getDatabase().networkDao().update(network);
         return !virtualNetworkConfig.equals(virtualNetworkConfig2);
     }
 
@@ -999,7 +990,9 @@ public class ZeroTierOneService extends VpnService implements Runnable, EventLis
                 }
                 break;
             case CUSTOM_DNS:
-                for (var dnsServer : networkConfig.getDnsServers()) {
+                var dnsServers = ((ZerotierFixApplication) getApplication())
+                        .getDatabase().dnsServerDao().findByNetworkId(network.getNetworkId());
+                for (var dnsServer : dnsServers) {
                     try {
                         InetAddress byName = InetAddress.getByName(dnsServer.getNameserver());
                         if (byName instanceof Inet4Address) {

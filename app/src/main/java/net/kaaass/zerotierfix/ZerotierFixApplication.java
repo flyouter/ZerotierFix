@@ -3,9 +3,7 @@ package net.kaaass.zerotierfix;
 import android.app.Application;
 import android.util.Log;
 
-import net.kaaass.zerotierfix.model.DaoMaster;
-import net.kaaass.zerotierfix.model.DaoSession;
-import net.kaaass.zerotierfix.model.ZTOpenHelper;
+import net.kaaass.zerotierfix.model.AppDatabase;
 
 /**
  * 主程序入口
@@ -13,19 +11,15 @@ import net.kaaass.zerotierfix.model.ZTOpenHelper;
  * @author kaaass
  */
 public class ZerotierFixApplication extends Application {
-    private DaoSession mDaoSession;
+    private AppDatabase mDatabase;
 
     public void onCreate() {
         super.onCreate();
         Log.i("Application", "Starting Application");
-        // 创建 DAO 会话
-        this.mDaoSession = new DaoMaster(
-                new ZTOpenHelper(this, "ztfixdb", null)
-                        .getWritableDatabase()
-        ).newSession();
+        this.mDatabase = AppDatabase.getInstance(this);
     }
 
-    public DaoSession getDaoSession() {
-        return this.mDaoSession;
+    public AppDatabase getDatabase() {
+        return this.mDatabase;
     }
 }

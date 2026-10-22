@@ -18,7 +18,6 @@ import net.kaaass.zerotierfix.events.VirtualNetworkConfigReplyEvent;
 import net.kaaass.zerotierfix.events.VirtualNetworkConfigRequestEvent;
 import net.kaaass.zerotierfix.model.Network;
 import net.kaaass.zerotierfix.model.NetworkConfig;
-import net.kaaass.zerotierfix.model.NetworkDao;
 
 import org.greenrobot.eventbus.EventBus;
 import org.greenrobot.eventbus.Subscribe;
@@ -62,21 +61,14 @@ public class NetworkDetailModel extends AndroidViewModel {
      */
     private void doRetrieveNetworkAndConfig() {
         // 在 DB 中查询网络对象
-        var networkDao = ((ZerotierFixApplication) getApplication())
-                .getDaoSession().getNetworkDao();
-        var queryResult = networkDao.queryBuilder()
-                .where(NetworkDao.Properties.NetworkId.eq(this.networkId))
-                .build().forCurrentThread().list();
-        if (queryResult.size() > 1) {
-            Log.e(TAG, "Data inconsistency error.  More than one network with a single ID!");
-            return;
-        } else if (queryResult.size() < 1) {
+        Network network = ((ZerotierFixApplication) getApplication())
+                .getDatabase().loadNetwork(this.networkId);
+        if (network == null) {
             Log.e(TAG, "Network not found!");
             return;
         }
 
         // 更新 LiveData
-        Network network = queryResult.get(0);
         this.network.setValue(network);
         this.networkConfig.setValue(network.getNetworkConfig());
     }
@@ -100,7 +92,7 @@ public class NetworkDetailModel extends AndroidViewModel {
 
         // 更新数据库
         networkConfig.setRouteViaZeroTier(routeViaZeroTier);
-        networkConfig.update();
+        ((ZerotierFixApplication) getApplication()).getDatabase().networkConfigDao().update(networkConfig);
 
         // 触发事件
         this.eventBus.post(new DefaultRouteChangedEvent(this.networkId, routeViaZeroTier));
