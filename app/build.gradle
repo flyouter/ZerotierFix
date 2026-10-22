@@ -1,49 +1,63 @@
 plugins {
     id 'com.android.application'
-    id 'org.greenrobot.greendao'
 }
 
-greendao {
-    schemaVersion 22
-    daoPackage 'net.kaaass.zerotierfix.model'
+// greenDAO 代码生成。原 org.greenrobot.greendao 插件在 AGP 9 上无法应用，
+// 由其代码生成器 greendao-code-modifier 直接驱动，见 buildSrc。
+def greendaoSchemaVersion = 22
+def greendaoDaoPackage = 'net.kaaass.zerotierfix.model'
+
+def greendaoGenerate = tasks.register('greendaoGenerate', buildlogic.GreendaoGenerateTask) {
+    sourceFiles.from(fileTree('src/main/java') { include '**/*.java' })
+    schemaVersion.set(greendaoSchemaVersion)
+    daoPackage.set(greendaoDaoPackage)
+    outputDir.set(layout.buildDirectory.dir('generated/source/greendao'))
+}
+
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        variant.sources.java?.addGeneratedSourceDirectory(
+                greendaoGenerate, { task -> task.outputDir } as kotlin.jvm.functions.Function1)
+    }
 }
 
 // 版本号手动维护：<App 版本>+core.<ZeroTier 核心版本>
 android {
-    compileSdkVersion rootProject.ext.compileSdkVersion
+    compileSdk = rootProject.ext.compileSdkVersion
 
     defaultConfig {
         applicationId "net.kaaass.zerotierfix"
-        minSdkVersion rootProject.ext.minSdkVersion
-        targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 16
-        versionName "1.0.11+core.1.16.2"
-        multiDexEnabled true
+        minSdk = rootProject.ext.minSdkVersion
+        targetSdk = rootProject.ext.targetSdkVersion
+        versionCode = 16
+        versionName = "1.0.11+core.1.16.2"
+        multiDexEnabled = true
 
-        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+        testInstrumentationRunner = 'androidx.test.runner.AndroidJUnitRunner'
     }
 
     buildTypes {
         release {
-            minifyEnabled false
+            minifyEnabled = false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
 
-    // 按 ABI 拆分成独立的 APK，另生成一个包含全部架构的 universal 包。
+    // 仅支持 64 位 ABI，按 ABI 拆分成独立的 APK，
+    // 另生成一个包含全部架构的 universal 包。
     // 产物：app-<abi>-<variant>.apk 与 app-universal-<variant>.apk
     splits {
         abi {
-            enable true
+            enable = true
             reset()
-            include 'armeabi-v7a', 'arm64-v8a', 'x86', 'x86_64'
-            universalApk true
+            include 'arm64-v8a', 'x86_64'
+            universalApk = true
         }
     }
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_11
-        targetCompatibility JavaVersion.VERSION_11
-        coreLibraryDesugaringEnabled true
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+        coreLibraryDesugaringEnabled = true
     }
 
     configurations {
@@ -52,7 +66,10 @@ android {
             exclude module: 'commons-logging'
         }
     }
-    namespace 'net.kaaass.zerotierfix'
+    buildFeatures {
+        buildConfig = true
+    }
+    namespace = 'net.kaaass.zerotierfix'
 }
 
 dependencies {
