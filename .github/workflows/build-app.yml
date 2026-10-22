@@ -143,8 +143,6 @@ jobs:
       - name: Prepare release APK
         if: startsWith(github.ref, 'refs/tags/')
         shell: bash
-        env:
-          SIGNED_FILES: ${{ steps.sign_app.outputs.signedReleaseFiles }}
         run: |
           set -euo pipefail
 
@@ -152,15 +150,18 @@ jobs:
             echo "::error::APP_VERSION_FULL is empty"
             exit 1
           fi
-          if [ -z "${SIGNED_FILES:-}" ]; then
+
+          # sign-android-release v1 的 action.yml 声明了多文件输出，但其 lib/main.js
+          # 只实际设置单个 signedReleaseFile，这里按 -signed 命名规则直接收集
+          shopt -s nullglob
+          FILES=(app/build/outputs/apk/debug/*-debug-signed.apk)
+          if [ ${#FILES[@]} -eq 0 ]; then
             echo "::error::No signed APKs were produced"
             exit 1
           fi
 
           ASSETS=()
           HASH_LINES=()
-          # signedReleaseFiles 以冒号分隔
-          IFS=':' read -ra FILES <<< "$SIGNED_FILES"
           for SRC in "${FILES[@]}"; do
             if [ ! -f "$SRC" ]; then
               echo "::error::Signed APK not found: '$SRC'"
