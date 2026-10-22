@@ -9,5 +9,9 @@ import lombok.Data;
 @Data
 @AllArgsConstructor
 public class VPNErrorEvent {
+
+    /**
+     * 错误信息，不能为空。
+     */
     private final String message;
 }

@@ -7,5 +7,9 @@ import lombok.Data;
  */
 @Data
 public class VirtualNetworkConfigRequestEvent {
+
+    /**
+     * 目标网络 ID（十进制）。
+     */
     private final long networkId;
 }

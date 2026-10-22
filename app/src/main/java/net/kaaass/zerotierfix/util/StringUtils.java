@@ -1,10 +1,5 @@
 package net.kaaass.zerotierfix.util;
 
-import androidx.annotation.NonNull;
-
-import com.zerotier.sdk.Peer;
-import com.zerotier.sdk.Version;
-
 import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -22,23 +17,39 @@ public class StringUtils {
     /**
      * 将版本号转为可读字符串
      *
-     * @param version 版本号
+     * @param major    主版本号
+     * @param minor    次版本号
+     * @param revision 修订版本号
      * @return 可读字符串
      */
-    public static String toString(Version version) {
-        return String.format(Locale.ROOT, VERSION_FORMAT,
-                version.getMajor(), version.getMinor(), version.getRevision());
+    public static String versionString(int major, int minor, int revision) {
+        return String.format(Locale.ROOT, VERSION_FORMAT, major, minor, revision);
     }
 
     /**
-     * 获得结点版本的可读字符串
+     * 将网络 ID 转为 16 位 16 进制字符串
      *
-     * @param peer 结点
-     * @return 可读字符串
+     * @param networkId 网络 ID
+     * @return 16 位 16 进制字符串
      */
-    public static String peerVersionString(Peer peer) {
-        return String.format(Locale.ROOT, VERSION_FORMAT,
-                peer.getVersionMajor(), peer.getVersionMinor(), peer.getVersionRev());
+    public static String networkIdToString(long networkId) {
+        return String.format(Locale.ROOT, "%016x", networkId);
+    }
+
+    /**
+     * 将 MAC 地址转为 XX:XX:XX:XX:XX:XX 格式
+     *
+     * @param mac MAC 地址
+     * @return 格式化后的 MAC 地址
+     */
+    public static String macAddressToString(long mac) {
+        int[] macChars = new int[6];
+        for (int i = 0; i < 6; i++) {
+            macChars[i] = (int) (mac % 256);
+            mac >>= 8;
+        }
+        return String.format(Locale.ROOT, "%02x:%02x:%02x:%02x:%02x:%02x",
+                macChars[5], macChars[4], macChars[3], macChars[2], macChars[1], macChars[0]);
     }
 
     /**

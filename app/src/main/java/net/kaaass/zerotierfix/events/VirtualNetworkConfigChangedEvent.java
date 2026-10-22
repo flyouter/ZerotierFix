@@ -1,15 +1,17 @@
 package net.kaaass.zerotierfix.events;
 
-import com.zerotier.sdk.VirtualNetworkConfig;
+import net.kaaass.zerotierfix.model.dto.VirtualNetworkConfigDto;
 
-import lombok.AllArgsConstructor;
-import lombok.Data;
+import lombok.Value;
 
 /**
- * ZT 网络配置成功更改事件
+ * ZT 网络配置成功更改事件。
  */
-@Data
-@AllArgsConstructor
+@Value
 public class VirtualNetworkConfigChangedEvent {
-    private final VirtualNetworkConfig virtualNetworkConfig;
+
+    /**
+     * 发生变化的虚拟网络配置，不能为空。
+     */
+    VirtualNetworkConfigDto virtualNetworkConfig;
 }

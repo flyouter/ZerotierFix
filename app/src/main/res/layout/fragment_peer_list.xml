@@ -17,7 +17,7 @@
             android:clipToPadding="false"
             android:paddingBottom="80dp"
             app:layoutManager="LinearLayoutManager"
-            tools:context=".ui.PeerListFragment"
+            tools:context=".features.peer.PeerListFragment"
             tools:listitem="@layout/list_item_peer" />
     </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
 

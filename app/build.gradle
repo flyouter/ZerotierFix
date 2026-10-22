@@ -5,7 +5,7 @@ plugins {
 
 greendao {
     schemaVersion 22
-    daoPackage 'net.kaaass.zerotierfix.model'
+    daoPackage 'net.kaaass.zerotierfix.data.database.entity'
 }
 
 // 版本号手动维护：<App 版本>+core.<ZeroTier 核心版本>

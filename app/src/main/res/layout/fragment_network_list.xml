@@ -19,7 +19,7 @@
             android:clipToPadding="false"
             android:paddingBottom="80dp"
             app:layoutManager="LinearLayoutManager"
-            tools:context=".ui.NetworkListFragment"
+            tools:context=".features.networklist.NetworkListFragment"
             tools:listitem="@layout/list_item_network" />
 
         <RelativeLayout xmlns:tools="http://schemas.android.com/tools"

@@ -19,9 +19,24 @@ import java.util.List;
 public class NetworkInfoUtils {
     public static final String TAG = "NetworkInfoUtils";
 
+    /**
+     * 当前网络连接类型。
+     */
     public enum CurrentConnection {
+
+        /**
+         * 无网络连接。
+         */
         CONNECTION_NONE,
+
+        /**
+         * 移动数据连接。
+         */
         CONNECTION_MOBILE,
+
+        /**
+         * 其他网络连接（如 Wi-Fi）。
+         */
         CONNECTION_OTHER
     }
 

@@ -1,11 +1,15 @@
 package net.kaaass.zerotierfix.events;
 
-import lombok.Data;
+import lombok.Value;
 
 /**
- * 应答服务是否运行事件
+ * 应答服务是否运行事件。
  */
-@Data
+@Value
 public class IsServiceRunningReplyEvent {
-    private final boolean isRunning;
+
+    /**
+     * 服务是否正在运行。
+     */
+    boolean running;
 }

@@ -1,17 +1,22 @@
 package net.kaaass.zerotierfix.events;
 
-import androidx.appcompat.widget.SwitchCompat;
+import net.kaaass.zerotierfix.model.dto.NetworkSummary;
 
-import net.kaaass.zerotierfix.model.Network;
-
-import lombok.Data;
+import lombok.Value;
 
 /**
- * 网络列表点击按钮事件。用于在后台进程控制 ZT 服务的启停
+ * 网络列表开关变更事件。用于在后台线程控制 ZT 服务的启停。
  */
-@Data
+@Value
 public class NetworkListCheckedChangeEvent {
-    private final SwitchCompat switchHandle;
-    private final boolean checked;
-    private final Network selectedNetwork;
+
+    /**
+     * 被操作的网络概要，不能为空。
+     */
+    NetworkSummary selectedNetwork;
+
+    /**
+     * 开关的新状态。
+     */
+    boolean checked;
 }

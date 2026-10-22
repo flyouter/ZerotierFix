@@ -1,15 +1,15 @@
 package net.kaaass.zerotierfix.events;
 
-import net.kaaass.zerotierfix.model.Network;
-
-import lombok.AllArgsConstructor;
-import lombok.Data;
+import lombok.Value;
 
 /**
- * 用户更改 ZT 网络配置事件
+ * 用户更改 ZT 网络配置事件。
  */
-@Data
-@AllArgsConstructor
+@Value
 public class NetworkConfigChangedByUserEvent {
-    private final Network network;
+
+    /**
+     * 发生配置变更的网络 ID（十进制）。
+     */
+    long networkId;
 }

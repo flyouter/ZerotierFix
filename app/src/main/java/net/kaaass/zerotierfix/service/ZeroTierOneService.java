@@ -1,9 +1,5 @@
 package net.kaaass.zerotierfix.service;
 
-import android.app.NotificationChannel;
-import android.app.NotificationManager;
-import android.app.PendingIntent;
-import android.content.Context;
 import android.content.Intent;
 import android.net.VpnService;
 import android.os.Binder;
@@ -14,9 +10,6 @@ import android.preference.PreferenceManager;
 import android.util.Log;
 import android.widget.Toast;
 
-import androidx.core.app.NotificationCompat;
-import androidx.core.content.ContextCompat;
-
 import com.zerotier.sdk.Event;
 import com.zerotier.sdk.EventListener;
 import com.zerotier.sdk.Node;
@@ -24,12 +17,10 @@ import com.zerotier.sdk.ResultCode;
 import com.zerotier.sdk.VirtualNetworkConfig;
 import com.zerotier.sdk.VirtualNetworkConfigListener;
 import com.zerotier.sdk.VirtualNetworkConfigOperation;
-import com.zerotier.sdk.VirtualNetworkStatus;
 
 import net.kaaass.zerotierfix.R;
 import net.kaaass.zerotierfix.ZerotierFixApplication;
 import net.kaaass.zerotierfix.events.AfterJoinNetworkEvent;
-import net.kaaass.zerotierfix.events.ErrorEvent;
 import net.kaaass.zerotierfix.events.IsServiceRunningReplyEvent;
 import net.kaaass.zerotierfix.events.IsServiceRunningRequestEvent;
 import net.kaaass.zerotierfix.events.ManualDisconnectEvent;
@@ -49,14 +40,21 @@ import net.kaaass.zerotierfix.events.VPNErrorEvent;
 import net.kaaass.zerotierfix.events.VirtualNetworkConfigChangedEvent;
 import net.kaaass.zerotierfix.events.VirtualNetworkConfigReplyEvent;
 import net.kaaass.zerotierfix.events.VirtualNetworkConfigRequestEvent;
-import net.kaaass.zerotierfix.model.AppNode;
-import net.kaaass.zerotierfix.model.MoonOrbit;
-import net.kaaass.zerotierfix.model.Network;
-import net.kaaass.zerotierfix.model.NetworkDao;
-import net.kaaass.zerotierfix.model.type.DNSMode;
-import net.kaaass.zerotierfix.ui.NetworkListActivity;
+import net.kaaass.zerotierfix.data.repository.NetworkRepository;
+import net.kaaass.zerotierfix.model.dto.MoonOrbitDto;
+import net.kaaass.zerotierfix.model.dto.NetworkConfigDto;
+import net.kaaass.zerotierfix.model.dto.NetworkSummary;
+import net.kaaass.zerotierfix.model.dto.VirtualNetworkConfigDto;
+import net.kaaass.zerotierfix.model.enums.NetworkStatus;
+import net.kaaass.zerotierfix.vpn.config.DnsConfigurator;
+import net.kaaass.zerotierfix.vpn.config.VirtualNetworkConfigMapper;
+import net.kaaass.zerotierfix.vpn.node.NodeInfoMapper;
+import net.kaaass.zerotierfix.vpn.node.UdpCom;
+import net.kaaass.zerotierfix.vpn.route.Route;
+import net.kaaass.zerotierfix.vpn.store.DataStore;
+import net.kaaass.zerotierfix.vpn.tun.TunTapAdapter;
 import net.kaaass.zerotierfix.util.Constants;
-import net.kaaass.zerotierfix.util.DatabaseUtils;
+import net.kaaass.zerotierfix.data.database.DatabaseUtils;
 import net.kaaass.zerotierfix.util.InetAddressUtils;
 import net.kaaass.zerotierfix.util.NetworkInfoUtils;
 import net.kaaass.zerotierfix.util.StringUtils;
@@ -68,7 +66,6 @@ import org.greenrobot.eventbus.ThreadMode;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.net.DatagramSocket;
-import java.net.Inet4Address;
 import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
@@ -87,7 +84,6 @@ public class ZeroTierOneService extends VpnService implements Runnable, EventLis
     public static final String ZT1_USE_DEFAULT_ROUTE = "com.zerotier.one.use_default_route";
     private static final String[] DISALLOWED_APPS = {"com.android.vending"};
     private static final String TAG = "ZT1_Service";
-    private static final int ZT_NOTIFICATION_TAG = 5919812;
     private final IBinder mBinder = new ZeroTierBinder();
     private final DataStore dataStore = new DataStore(this);
     private final EventBus eventBus = EventBus.getDefault();
@@ -101,8 +97,9 @@ public class ZeroTierOneService extends VpnService implements Runnable, EventLis
     private int mStartID = -1;
     private long networkId = 0;
     private long nextBackgroundTaskDeadline = 0;
+    private final VpnNotificationController notificationController =
+            new VpnNotificationController(this);
     private Node node;
-    private NotificationManager notificationManager;
     private TunTapAdapter tunTapAdapter;
     private UdpCom udpCom;
     private Thread udpThread;
@@ -260,6 +257,17 @@ public class ZeroTierOneService extends VpnService implements Runnable, EventLis
     }
 
     /**
+     * 获取网络数据仓库。
+     *
+     * @return 网络仓库，非空
+     */
+    private NetworkRepository getNetworkRepository() {
+        return ((ZerotierFixApplication) getApplication())
+                .getAppContainer()
+                .getNetworkRepository();
+    }
+
+    /**
      * 启动 ZT 服务，连接至给定网络或最近连接的网络
      */
     @Override
@@ -286,29 +294,13 @@ public class ZeroTierOneService extends VpnService implements Runnable, EventLis
             networkId = intent.getLongExtra(ZT1_NETWORK_ID, 0);
         } else {
             // 默认启用最近一次启动的网络
-            DatabaseUtils.readLock.lock();
-            try {
-                var daoSession = ((ZerotierFixApplication) getApplication()).getDaoSession();
-                daoSession.clear();
-                var lastActivatedNetworks = daoSession.getNetworkDao().queryBuilder()
-                        .where(NetworkDao.Properties.LastActivated.eq(true))
-                        .list();
-                if (lastActivatedNetworks == null || lastActivatedNetworks.isEmpty()) {
-                    Log.e(TAG, "Couldn't find last activated connection");
-                    return START_NOT_STICKY;
-                } else if (lastActivatedNetworks.size() > 1) {
-                    Log.e(TAG, "Multiple networks marked as last connected: " + lastActivatedNetworks.size());
-                    for (Network network : lastActivatedNetworks) {
-                        Log.e(TAG, "ID: " + Long.toHexString(network.getNetworkId()));
-                    }
-                    throw new IllegalStateException("Database is inconsistent");
-                } else {
-                    networkId = lastActivatedNetworks.get(0).getNetworkId();
-                    Log.i(TAG, "Got Always On request for ZeroTier");
-                }
-            } finally {
-                DatabaseUtils.readLock.unlock();
+            Long lastActivatedNetworkId = getNetworkRepository().getLastActivatedNetworkId();
+            if (lastActivatedNetworkId == null) {
+                Log.e(TAG, "Couldn't find last activated connection");
+                return START_NOT_STICKY;
             }
+            networkId = lastActivatedNetworkId;
+            Log.i(TAG, "Got Always On request for ZeroTier");
         }
         if (networkId == 0) {
             Log.e(TAG, "Network ID not provided to service");
@@ -370,26 +362,10 @@ public class ZeroTierOneService extends VpnService implements Runnable, EventLis
 
                     // 持久化当前节点信息
                     long address = this.node.address();
-                    DatabaseUtils.writeLock.lock();
-                    try {
-                        var appNodeDao = ((ZerotierFixApplication) getApplication())
-                                .getDaoSession().getAppNodeDao();
-                        var nodesList = appNodeDao.queryBuilder().build()
-                                .forCurrentThread().list();
-                        if (nodesList.isEmpty()) {
-                            var appNode = new AppNode();
-                            appNode.setNodeId(address);
-                            appNode.setNodeIdStr(String.format("%10x", address));
-                            appNodeDao.insert(appNode);
-                        } else {
-                            var appNode = nodesList.get(0);
-                            appNode.setNodeId(address);
-                            appNode.setNodeIdStr(String.format("%10x", address));
-                            appNodeDao.save(appNode);
-                        }
-                    } finally {
-                        DatabaseUtils.writeLock.unlock();
-                    }
+                    ((ZerotierFixApplication) getApplication())
+                            .getAppContainer()
+                            .getAppNodeRepository()
+                            .saveNodeId(address);
 
                     this.eventBus.post(new NodeIDEvent(address));
                     this.udpCom.setNode(this.node);
@@ -482,9 +458,7 @@ public class ZeroTierOneService extends VpnService implements Runnable, EventLis
         if (this.eventBus.isRegistered(this)) {
             this.eventBus.unregister(this);
         }
-        if (this.notificationManager != null) {
-            this.notificationManager.cancel(ZT_NOTIFICATION_TAG);
-        }
+        this.notificationController.cancel();
         if (!stopSelfResult(this.mStartID)) {
             Log.e(TAG, "stopSelfResult() failed!");
         }
@@ -585,7 +559,7 @@ public class ZeroTierOneService extends VpnService implements Runnable, EventLis
         // 连接到新网络
         var result = this.node.join(networkId);
         if (result != ResultCode.RESULT_OK) {
-            this.eventBus.post(new ErrorEvent(result));
+            Log.e(TAG, "Failed to join network " + Long.toHexString(networkId) + ": " + result);
             return;
         }
         // 连接后事件
@@ -602,7 +576,7 @@ public class ZeroTierOneService extends VpnService implements Runnable, EventLis
         }
         var result = this.node.leave(networkId);
         if (result != ResultCode.RESULT_OK) {
-            this.eventBus.post(new ErrorEvent(result));
+            Log.e(TAG, "Failed to leave network " + Long.toHexString(networkId) + ": " + result);
             return;
         }
         var networkConfigs = this.node.networkConfigs();
@@ -626,7 +600,8 @@ public class ZeroTierOneService extends VpnService implements Runnable, EventLis
         VirtualNetworkConfig[] networks;
         Node node2 = this.node;
         if (node2 != null && (networks = node2.networkConfigs()) != null && networks.length > 0) {
-            this.eventBus.post(new NetworkListReplyEvent(networks));
+            this.eventBus.post(new NetworkListReplyEvent(
+                    VirtualNetworkConfigMapper.toDtoList(networks)));
         }
     }
 
@@ -639,7 +614,8 @@ public class ZeroTierOneService extends VpnService implements Runnable, EventLis
     public void onNodeStatusRequest(NodeStatusRequestEvent event) {
         // 返回节点状态
         if (this.node != null) {
-            this.eventBus.post(new NodeStatusEvent(this.node.status(), this.node.getVersion()));
+            this.eventBus.post(new NodeStatusEvent(
+                    NodeInfoMapper.toDto(this.node.status(), this.node.getVersion())));
         }
     }
 
@@ -652,7 +628,7 @@ public class ZeroTierOneService extends VpnService implements Runnable, EventLis
             this.eventBus.post(new PeerInfoReplyEvent(null));
             return;
         }
-        this.eventBus.post(new PeerInfoReplyEvent(this.node.peers()));
+        this.eventBus.post(new PeerInfoReplyEvent(NodeInfoMapper.toDto(this.node.peers())));
     }
 
     /**
@@ -665,16 +641,17 @@ public class ZeroTierOneService extends VpnService implements Runnable, EventLis
             return;
         }
         var config = this.node.networkConfig(event.getNetworkId());
-        this.eventBus.post(new VirtualNetworkConfigReplyEvent(config));
+        this.eventBus.post(new VirtualNetworkConfigReplyEvent(
+                config == null ? null : VirtualNetworkConfigMapper.toDto(config)));
     }
 
     @Subscribe(threadMode = ThreadMode.ASYNC)
     public void onNetworkReconfigure(NetworkReconfigureEvent event) {
         boolean isChanged = event.isChanged();
         var network = event.getNetwork();
-        var networkConfig = event.getVirtualNetworkConfig();
-        boolean configUpdated = isChanged && updateTunnelConfig(network);
-        boolean networkIsOk = networkConfig.getStatus() == VirtualNetworkStatus.NETWORK_STATUS_OK;
+        VirtualNetworkConfigDto networkConfig = event.getVirtualNetworkConfig();
+        boolean configUpdated = isChanged && network != null && updateTunnelConfig(network);
+        boolean networkIsOk = networkConfig.getStatus() == NetworkStatus.OK;
 
         if (configUpdated || !networkIsOk) {
             this.eventBus.post(new VirtualNetworkConfigChangedEvent(networkConfig));
@@ -683,8 +660,12 @@ public class ZeroTierOneService extends VpnService implements Runnable, EventLis
 
     @Subscribe(threadMode = ThreadMode.ASYNC)
     public void onNetworkConfigChangedByUser(NetworkConfigChangedByUserEvent event) {
-        Network network = event.getNetwork();
-        if (network.getNetworkId() != this.networkId) {
+        if (event.getNetworkId() != this.networkId) {
+            return;
+        }
+        NetworkSummary network = getNetworkRepository().getNetworkSummary(event.getNetworkId());
+        if (network == null) {
+            Log.e(TAG, "Network not found: " + event.getNetworkId());
             return;
         }
         updateTunnelConfig(network);
@@ -700,7 +681,8 @@ public class ZeroTierOneService extends VpnService implements Runnable, EventLis
         Log.d(TAG, "Event: " + event.toString());
         // 更新节点状态
         if (this.node.isInited()) {
-            this.eventBus.post(new NodeStatusEvent(this.node.status(), this.node.getVersion()));
+            this.eventBus.post(new NodeStatusEvent(
+                    NodeInfoMapper.toDto(this.node.status(), this.node.getVersion())));
         }
     }
 
@@ -718,16 +700,10 @@ public class ZeroTierOneService extends VpnService implements Runnable, EventLis
         DatabaseUtils.writeLock.lock();
         try {
             // 查找网络 ID 对应的配置
-            var networkDao = ((ZerotierFixApplication) getApplication())
-                    .getDaoSession()
-                    .getNetworkDao();
-            var matchedNetwork = networkDao.queryBuilder()
-                    .where(NetworkDao.Properties.NetworkId.eq(networkId))
-                    .list();
-            if (matchedNetwork.size() != 1) {
+            var network = getNetworkRepository().getNetworkSummary(networkId);
+            if (network == null) {
                 throw new IllegalStateException("Database is inconsistent");
             }
-            var network = matchedNetwork.get(0);
             // 根据当前网络状态确定更改配置的行为
             switch (op) {
                 case VIRTUAL_NETWORK_CONFIG_OPERATION_UP:
@@ -737,7 +713,11 @@ public class ZeroTierOneService extends VpnService implements Runnable, EventLis
                 case VIRTUAL_NETWORK_CONFIG_OPERATION_CONFIG_UPDATE:
                     Log.i(TAG, "Network Config Update!");
                     boolean isChanged = setVirtualNetworkConfigAndUpdateDatabase(network, config);
-                    this.eventBus.post(new NetworkReconfigureEvent(isChanged, network, config));
+                    this.eventBus.post(new NetworkReconfigureEvent(
+                            isChanged,
+                            network,
+                            VirtualNetworkConfigMapper.toDto(config)
+                    ));
                     break;
                 case VIRTUAL_NETWORK_CONFIG_OPERATION_DOWN:
                 case VIRTUAL_NETWORK_CONFIG_OPERATION_DESTROY:
@@ -751,21 +731,26 @@ public class ZeroTierOneService extends VpnService implements Runnable, EventLis
         }
     }
 
-    private boolean setVirtualNetworkConfigAndUpdateDatabase(Network network, VirtualNetworkConfig virtualNetworkConfig) {
+    private boolean setVirtualNetworkConfigAndUpdateDatabase(NetworkSummary network, VirtualNetworkConfig virtualNetworkConfig) {
         if ((DatabaseUtils.writeLock instanceof ReentrantReadWriteLock.WriteLock) && !((ReentrantReadWriteLock.WriteLock) DatabaseUtils.writeLock).isHeldByCurrentThread()) {
             throw new IllegalStateException("DatabaseUtils.writeLock not held");
         }
-        VirtualNetworkConfig virtualNetworkConfig2 = getVirtualNetworkConfig(network.getNetworkId());
-        setVirtualNetworkConfig(network.getNetworkId(), virtualNetworkConfig);
+        long networkId = network.getNetworkId();
+        VirtualNetworkConfig virtualNetworkConfig2 = getVirtualNetworkConfig(networkId);
+        setVirtualNetworkConfig(networkId, virtualNetworkConfig);
         var networkName = virtualNetworkConfig.getName();
         if (networkName != null && !networkName.isEmpty()) {
-            network.setNetworkName(networkName);
+            getNetworkRepository().updateNetworkName(networkId, networkName);
         }
-        network.update();
         return !virtualNetworkConfig.equals(virtualNetworkConfig2);
     }
 
-    protected void shutdown() {
+    /**
+     * 关闭 ZeroTier 服务并释放 VPN socket。
+     *
+     * <p>供 UDP 通信失败等致命错误路径调用；可在任意线程调用。</p>
+     */
+    public void shutdown() {
         stopZeroTier();
         if (this.vpnSocket != null) {
             try {
@@ -778,9 +763,13 @@ public class ZeroTierOneService extends VpnService implements Runnable, EventLis
         stopSelf(this.mStartID);
     }
 
-    private boolean updateTunnelConfig(Network network) {
+    private boolean updateTunnelConfig(NetworkSummary network) {
         long networkId = network.getNetworkId();
-        var networkConfig = network.getNetworkConfig();
+        NetworkConfigDto networkConfig = getNetworkRepository().getNetworkConfig(networkId);
+        if (networkConfig == null) {
+            Log.e(TAG, "Network config not found: " + networkId);
+            return false;
+        }
         var virtualNetworkConfig = getVirtualNetworkConfig(networkId);
         if (virtualNetworkConfig == null) {
             return false;
@@ -815,7 +804,7 @@ public class ZeroTierOneService extends VpnService implements Runnable, EventLis
         var builder = new VpnService.Builder();
         var assignedAddresses = virtualNetworkConfig.getAssignedAddresses();
         Log.i(TAG, "address length: " + assignedAddresses.length);
-        boolean isRouteViaZeroTier = networkConfig.getRouteViaZeroTier();
+        boolean isRouteViaZeroTier = networkConfig.isRouteViaZeroTier();
 
         // 遍历 ZT 网络中当前设备的 IP 地址，组播配置
         for (var vpnAddress : assignedAddresses) {
@@ -897,7 +886,7 @@ public class ZeroTierOneService extends VpnService implements Runnable, EventLis
         if (Build.VERSION.SDK_INT >= 29) {
             builder.setMetered(false);
         }
-        addDNSServers(builder, network);
+        DnsConfigurator.addDnsServers(builder, networkConfig, virtualNetworkConfig, this.disableIPv6);
 
         // 配置 MTU
         int mtu = virtualNetworkConfig.getMtu();
@@ -934,36 +923,7 @@ public class ZeroTierOneService extends VpnService implements Runnable, EventLis
         this.tunTapAdapter.startThreads();
 
         // 状态栏提示
-        if (this.notificationManager == null) {
-            this.notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-        }
-        if (Build.VERSION.SDK_INT >= 26) {
-            String channelName = getString(R.string.channel_name);
-            String description = getString(R.string.channel_description);
-            var channel = new NotificationChannel(
-                    Constants.CHANNEL_ID, channelName, NotificationManager.IMPORTANCE_HIGH);
-            channel.setDescription(description);
-            this.notificationManager.createNotificationChannel(channel);
-        }
-        int pendingIntentFlag = PendingIntent.FLAG_UPDATE_CURRENT;
-        if (Build.VERSION.SDK_INT >= 31) {
-            pendingIntentFlag |= PendingIntent.FLAG_IMMUTABLE;
-        }
-        var pendingIntent =
-                PendingIntent.getActivity(this, 0,
-                        new Intent(this, NetworkListActivity.class)
-                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP
-                                        | Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                        , pendingIntentFlag);
-        var notification = new NotificationCompat.Builder(this, Constants.CHANNEL_ID)
-                .setPriority(1)
-                .setOngoing(true)
-                .setSmallIcon(R.mipmap.ic_launcher)
-                .setContentTitle(getString(R.string.notification_title_connected))
-                .setContentText(getString(R.string.notification_text_connected, network.getNetworkIdStr()))
-                .setColor(ContextCompat.getColor(getApplicationContext(), R.color.zerotier_orange))
-                .setContentIntent(pendingIntent).build();
-        this.notificationManager.notify(ZT_NOTIFICATION_TAG, notification);
+        this.notificationController.showConnected(network.getNetworkIdStr());
         Log.i(TAG, "ZeroTier One Connected");
 
         // 旧版本 Android 多播处理
@@ -978,45 +938,6 @@ public class ZeroTierOneService extends VpnService implements Runnable, EventLis
         return true;
     }
 
-    private void addDNSServers(VpnService.Builder builder, Network network) {
-        var networkConfig = network.getNetworkConfig();
-        var virtualNetworkConfig = getVirtualNetworkConfig(network.getNetworkId());
-        var dnsMode = DNSMode.fromInt(networkConfig.getDnsMode());
-
-        switch (dnsMode) {
-            case NETWORK_DNS:
-                if (virtualNetworkConfig.getDns() == null) {
-                    return;
-                }
-                builder.addSearchDomain(virtualNetworkConfig.getDns().getDomain());
-                for (var inetSocketAddress : virtualNetworkConfig.getDns().getServers()) {
-                    InetAddress address = inetSocketAddress.getAddress();
-                    if (address instanceof Inet4Address) {
-                        builder.addDnsServer(address);
-                    } else if ((address instanceof Inet6Address) && !this.disableIPv6) {
-                        builder.addDnsServer(address);
-                    }
-                }
-                break;
-            case CUSTOM_DNS:
-                for (var dnsServer : networkConfig.getDnsServers()) {
-                    try {
-                        InetAddress byName = InetAddress.getByName(dnsServer.getNameserver());
-                        if (byName instanceof Inet4Address) {
-                            builder.addDnsServer(byName);
-                        } else if ((byName instanceof Inet6Address) && !this.disableIPv6) {
-                            builder.addDnsServer(byName);
-                        }
-                    } catch (Exception e) {
-                        Log.e(TAG, "Exception parsing DNS server: " + e, e);
-                    }
-                }
-                break;
-            default:
-                break;
-        }
-    }
-
     /**
      * 入轨事件
      */
@@ -1027,7 +948,7 @@ public class ZeroTierOneService extends VpnService implements Runnable, EventLis
             return;
         }
         // 入轨
-        for (MoonOrbit moonOrbit : event.getMoonOrbits()) {
+        for (MoonOrbitDto moonOrbit : event.getMoonOrbits()) {
             Log.i(TAG, "Orbiting moon: " + Long.toHexString(moonOrbit.getMoonWorldId()));
             this.orbitNetwork(moonOrbit.getMoonWorldId(), moonOrbit.getMoonSeed());
         }
@@ -1047,8 +968,7 @@ public class ZeroTierOneService extends VpnService implements Runnable, EventLis
         // 入轨
         ResultCode result = this.node.orbit(moonWorldId, moonSeed);
         if (result != ResultCode.RESULT_OK) {
-            Log.e(TAG, "Failed to orbit " + Long.toHexString(moonWorldId));
-            this.eventBus.post(new ErrorEvent(result));
+            Log.e(TAG, "Failed to orbit " + Long.toHexString(moonWorldId) + ": " + result);
         }
     }
 

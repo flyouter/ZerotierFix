@@ -12,7 +12,7 @@
         android:clipToPadding="false"
         android:paddingBottom="80dp"
         app:layoutManager="LinearLayoutManager"
-        tools:context=".ui.MoonOrbitFragment"
+        tools:context=".features.moon.MoonOrbitFragment"
         tools:listitem="@layout/list_item_moon_orbit" />
 
     <RelativeLayout xmlns:tools="http://schemas.android.com/tools"

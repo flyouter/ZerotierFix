@@ -1,19 +1,28 @@
 package net.kaaass.zerotierfix.events;
 
-import com.zerotier.sdk.VirtualNetworkConfig;
+import net.kaaass.zerotierfix.model.dto.NetworkSummary;
+import net.kaaass.zerotierfix.model.dto.VirtualNetworkConfigDto;
 
-import net.kaaass.zerotierfix.model.Network;
-
-import lombok.AllArgsConstructor;
-import lombok.Data;
+import lombok.Value;
 
 /**
- * 更新网络配置的结果事件
+ * 更新网络配置的结果事件。
  */
-@Data
-@AllArgsConstructor
+@Value
 public class NetworkReconfigureEvent {
-    private final boolean changed;
-    private final Network network;
-    private final VirtualNetworkConfig virtualNetworkConfig;
+
+    /**
+     * 本地配置是否发生变化。
+     */
+    boolean changed;
+
+    /**
+     * 发生变化的网络概要。
+     */
+    NetworkSummary network;
+
+    /**
+     * 最新的虚拟网络配置，不能为空。
+     */
+    VirtualNetworkConfigDto virtualNetworkConfig;
 }

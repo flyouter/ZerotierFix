@@ -1,18 +1,19 @@
 package net.kaaass.zerotierfix.events;
 
-import com.zerotier.sdk.Peer;
+import net.kaaass.zerotierfix.model.dto.PeerInfoDto;
 
-import lombok.AllArgsConstructor;
-import lombok.Data;
+import java.util.List;
+
+import lombok.Value;
 
 /**
- * 应答结点信息事件
- *
- * @author kaaass
+ * 应答节点信息事件。
  */
-@Data
-@AllArgsConstructor
+@Value
 public class PeerInfoReplyEvent {
 
-    private final Peer[] peers;
+    /**
+     * Peer 信息列表；服务未运行时为 {@code null}。
+     */
+    List<PeerInfoDto> peers;
 }
