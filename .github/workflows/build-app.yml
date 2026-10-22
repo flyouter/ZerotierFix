@@ -42,7 +42,8 @@ jobs:
         name: Upload app APK
         with:
           name: App bundle
-          path: app/build/outputs/apk/debug/app-debug.apk
+          # 按 ABI 拆分的 debug APK（含 universal 包）
+          path: app/build/outputs/apk/debug/*.apk
       - name: Validate signing secrets
         if: github.event_name != 'pull_request'
         shell: bash
@@ -85,7 +86,8 @@ jobs:
         name: Upload signed app APK
         with:
           name: Signed app bundle
-          path: ${{steps.sign_app.outputs.signedReleaseFile}}
+          # 多架构打包时 signedReleaseFile 为空，改用通配符收集全部签名产物
+          path: app/build/outputs/apk/debug/*-signed.apk
       # ---------- 以下步骤仅在 tag 构建时执行 ----------
       - name: Prepare release metadata
         if: startsWith(github.ref, 'refs/tags/')
@@ -142,29 +144,60 @@ jobs:
       - name: Prepare release APK
         if: startsWith(github.ref, 'refs/tags/')
         shell: bash
+        env:
+          SIGNED_FILES: ${{ steps.sign_app.outputs.signedReleaseFiles }}
         run: |
           set -euo pipefail
-          SRC="${{ steps.sign_app.outputs.signedReleaseFile }}"
-          if [ -z "$SRC" ] || [ ! -f "$SRC" ]; then
-            echo "::error::Signed APK not found: '$SRC'"
-            exit 1
-          fi
 
           if [ -z "${APP_VERSION_FULL:-}" ]; then
             echo "::error::APP_VERSION_FULL is empty"
             exit 1
           fi
-          ASSET_NAME="zerotier-fix-${APP_VERSION_FULL}.apk"
-          cp "$SRC" "$ASSET_NAME"
-          echo "RELEASE_ASSET=$ASSET_NAME" >> "$GITHUB_ENV"
+          if [ -z "${SIGNED_FILES:-}" ]; then
+            echo "::error::No signed APKs were produced"
+            exit 1
+          fi
+
+          ASSETS=()
+          HASH_LINES=()
+          # signedReleaseFiles 以冒号分隔
+          IFS=':' read -ra FILES <<< "$SIGNED_FILES"
+          for SRC in "${FILES[@]}"; do
+            if [ ! -f "$SRC" ]; then
+              echo "::error::Signed APK not found: '$SRC'"
+              exit 1
+            fi
+
+            # app-<abi>-debug-signed.apk -> <abi>（universal 包为 universal）
+            BASE=$(basename "$SRC")
+            if [[ "$BASE" != app-*-debug-signed.apk ]]; then
+              echo "::error::Unexpected signed APK name: '$BASE'"
+              exit 1
+            fi
+            ABI="${BASE#app-}"
+            ABI="${ABI%-debug-signed.apk}"
+
+            ASSET_NAME="zerotier-fix-${APP_VERSION_FULL}-${ABI}.apk"
+            cp "$SRC" "$ASSET_NAME"
+            ASSETS+=("$ASSET_NAME")
+            HASH_LINES+=("- \`$ASSET_NAME\`")
+            HASH_LINES+=("  - MD5: $(md5sum "$ASSET_NAME" | awk '{print $1}')")
+            HASH_LINES+=("  - SHA1: $(sha1sum "$ASSET_NAME" | awk '{print $1}')")
+            HASH_LINES+=("  - SHA256: $(sha256sum "$ASSET_NAME" | awk '{print $1}')")
+          done
+
+          # 发布资产为多行列表，供 softprops/action-gh-release 的 files 使用
+          {
+            echo "RELEASE_ASSETS<<EOF"
+            printf '%s\n' "${ASSETS[@]}"
+            echo "EOF"
+          } >> "$GITHUB_ENV"
 
           {
             echo
             echo "# File Hash / 文件哈希"
             echo
-            echo "- MD5: $(md5sum "$ASSET_NAME" | awk '{print $1}')"
-            echo "- SHA1: $(sha1sum "$ASSET_NAME" | awk '{print $1}')"
-            echo "- SHA256: $(sha256sum "$ASSET_NAME" | awk '{print $1}')"
+            printf '%s\n' "${HASH_LINES[@]}"
           } >> release-notes.md
 
       - name: Create GitHub Release
@@ -176,6 +209,6 @@ jobs:
           body_path: release-notes.md
           prerelease: ${{ env.PRERELEASE == 'true' }}
           draft: ${{ github.event.inputs.draft == 'true' }}
-          files: ${{ env.RELEASE_ASSET }}
+          files: ${{ env.RELEASE_ASSETS }}
           fail_on_unmatched_files: true
           overwrite_files: true
