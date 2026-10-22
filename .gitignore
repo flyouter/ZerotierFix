@@ -20,3 +20,6 @@ local.properties
 .claude/*.local.*
 CLAUDE.local.md
 .mcp.json
+
+# 本地工具工作目录
+.mindfs/
