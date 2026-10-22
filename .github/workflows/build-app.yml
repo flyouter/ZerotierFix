@@ -2,8 +2,7 @@ name: Build APP
 
 on:
   push:
-    branches: [ "master", "old-android" ]
-    # 推送 tag 时构建并自动发布 GitHub Release
+    # 只在推送 tag 时构建并自动发布 GitHub Release；分支推送不再触发
     tags: [ "*" ]
   pull_request:
     branches: [ "master" ]
