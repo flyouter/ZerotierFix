@@ -21,17 +21,14 @@ import com.google.android.material.tabs.TabLayout;
 
 import net.kaaass.zerotierfix.ZerotierFixApplication;
 import net.kaaass.zerotierfix.R;
-import net.kaaass.zerotierfix.model.DaoSession;
+import net.kaaass.zerotierfix.model.AppDatabase;
 import net.kaaass.zerotierfix.model.DnsServer;
-import net.kaaass.zerotierfix.model.DnsServerDao;
 import net.kaaass.zerotierfix.model.Network;
 import net.kaaass.zerotierfix.model.NetworkConfig;
-import net.kaaass.zerotierfix.model.NetworkDao;
 import net.kaaass.zerotierfix.util.NetworkIdUtils;
 
 import org.apache.commons.validator.routines.InetAddressValidator;
 import org.greenrobot.eventbus.EventBus;
-import org.greenrobot.greendao.query.WhereCondition;
 
 import java.util.HashSet;
 import java.util.Set;
@@ -150,9 +147,8 @@ public class JoinNetworkFragment extends Fragment implements CustomDNSListener {
                     String obj = JoinNetworkFragment.this.mNetworkIdTextView.getText().toString();
                     long hexStringToLong = NetworkIdUtils.hexStringToLong(obj);
                     boolean isChecked = JoinNetworkFragment.this.mDefaultRouteCheckBox.isChecked();
-                    DaoSession daoSession = ((ZerotierFixApplication) JoinNetworkFragment.this.getActivity().getApplication()).getDaoSession();
-                    NetworkDao networkDao = daoSession.getNetworkDao();
-                    if (!networkDao.queryBuilder().where(NetworkDao.Properties.NetworkId.eq(Long.valueOf(hexStringToLong)), new WhereCondition[0]).build().forCurrentThread().list().isEmpty()) {
+                    AppDatabase database = ((ZerotierFixApplication) JoinNetworkFragment.this.getActivity().getApplication()).getDatabase();
+                    if (database.networkDao().countById(hexStringToLong) > 0) {
                         Log.e(JoinNetworkFragment.TAG, "Network already present");
                         JoinNetworkFragment.this.getActivity().onBackPressed();
                         return;
@@ -166,39 +162,37 @@ public class JoinNetworkFragment extends Fragment implements CustomDNSListener {
                     networkConfig.setRouteViaZeroTier(isChecked);
                     networkConfig.setDnsMode(JoinNetworkFragment.this.mDNSMode);
                     if (JoinNetworkFragment.this.mDNSMode == 2) {
-                        DnsServerDao dnsServerDao = daoSession.getDnsServerDao();
-                        daoSession.queryBuilder(DnsServer.class).where(DnsServerDao.Properties.NetworkId.eq(Long.valueOf(hexStringToLong)), new WhereCondition[0]).buildDelete().forCurrentThread().executeDeleteWithoutDetachingEntities();
-                        daoSession.clear();
+                        database.dnsServerDao().deleteByNetworkId(hexStringToLong);
                         if (!JoinNetworkFragment.this.mDNSv4_1.isEmpty() && InetAddressValidator.getInstance().isValid(JoinNetworkFragment.this.mDNSv4_1)) {
                             DnsServer dnsServer = new DnsServer();
                             dnsServer.setNameserver(JoinNetworkFragment.this.mDNSv4_1);
                             dnsServer.setNetworkId(Long.valueOf(hexStringToLong));
-                            dnsServerDao.insert(dnsServer);
+                            database.dnsServerDao().insert(dnsServer);
                         }
                         if (!JoinNetworkFragment.this.mDNSv4_2.isEmpty() && InetAddressValidator.getInstance().isValid(JoinNetworkFragment.this.mDNSv4_2)) {
                             DnsServer dnsServer2 = new DnsServer();
                             dnsServer2.setNameserver(JoinNetworkFragment.this.mDNSv4_2);
                             dnsServer2.setNetworkId(Long.valueOf(hexStringToLong));
-                            dnsServerDao.insert(dnsServer2);
+                            database.dnsServerDao().insert(dnsServer2);
                         }
                         if (!JoinNetworkFragment.this.mDNSv6_1.isEmpty() && InetAddressValidator.getInstance().isValid(JoinNetworkFragment.this.mDNSv6_1)) {
                             DnsServer dnsServer3 = new DnsServer();
                             dnsServer3.setNameserver(JoinNetworkFragment.this.mDNSv6_1);
                             dnsServer3.setNetworkId(Long.valueOf(hexStringToLong));
-                            dnsServerDao.insert(dnsServer3);
+                            database.dnsServerDao().insert(dnsServer3);
                         }
                         if (!JoinNetworkFragment.this.mDNSv6_2.isEmpty() && InetAddressValidator.getInstance().isValid(JoinNetworkFragment.this.mDNSv6_2)) {
                             DnsServer dnsServer4 = new DnsServer();
                             dnsServer4.setNameserver(JoinNetworkFragment.this.mDNSv6_2);
                             dnsServer4.setNetworkId(Long.valueOf(hexStringToLong));
-                            dnsServerDao.insert(dnsServer4);
+                            database.dnsServerDao().insert(dnsServer4);
                         }
                     } else {
                         networkConfig.setUseCustomDNS(false);
                     }
-                    daoSession.getNetworkConfigDao().insert(networkConfig);
+                    database.networkConfigDao().insert(networkConfig);
                     network.setNetworkConfigId(hexStringToLong);
-                    networkDao.insert(network);
+                    database.networkDao().insert(network);
                     JoinNetworkFragment.this.getActivity().onBackPressed();
                 } catch (Throwable th) {
                     JoinNetworkFragment.this.getActivity().onBackPressed();

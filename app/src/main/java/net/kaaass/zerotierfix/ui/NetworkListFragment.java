@@ -54,15 +54,10 @@ import net.kaaass.zerotierfix.events.OrbitMoonEvent;
 import net.kaaass.zerotierfix.events.StopEvent;
 import net.kaaass.zerotierfix.events.VPNErrorEvent;
 import net.kaaass.zerotierfix.events.VirtualNetworkConfigChangedEvent;
+import net.kaaass.zerotierfix.model.AppDatabase;
 import net.kaaass.zerotierfix.model.AppNode;
-import net.kaaass.zerotierfix.model.AssignedAddress;
-import net.kaaass.zerotierfix.model.AssignedAddressDao;
-import net.kaaass.zerotierfix.model.DaoSession;
 import net.kaaass.zerotierfix.model.MoonOrbit;
 import net.kaaass.zerotierfix.model.Network;
-import net.kaaass.zerotierfix.model.NetworkConfig;
-import net.kaaass.zerotierfix.model.NetworkConfigDao;
-import net.kaaass.zerotierfix.model.NetworkDao;
 import net.kaaass.zerotierfix.model.type.NetworkStatus;
 import net.kaaass.zerotierfix.service.ZeroTierOneService;
 import net.kaaass.zerotierfix.ui.view.NetworkDetailActivity;
@@ -336,13 +331,11 @@ public class NetworkListFragment extends Fragment {
     }
 
     private List<Network> getNetworkList() {
-        DaoSession daoSession = ((ZerotierFixApplication) requireActivity().getApplication()).getDaoSession();
-        daoSession.clear();
-        return daoSession.getNetworkDao().queryBuilder().orderAsc(NetworkDao.Properties.NetworkId).build().forCurrentThread().list();
+        return ((ZerotierFixApplication) requireActivity().getApplication()).getDatabase().loadNetworks();
     }
 
     private void setNodeIdText() {
-        List<AppNode> list = ((ZerotierFixApplication) requireActivity().getApplication()).getDaoSession().getAppNodeDao().queryBuilder().build().forCurrentThread().list();
+        List<AppNode> list = ((ZerotierFixApplication) requireActivity().getApplication()).getDatabase().appNodeDao().loadAll();
         if (!list.isEmpty()) {
             this.nodeIdView.setText(list.get(0).getNodeIdStr());
         }
@@ -511,8 +504,7 @@ public class NetworkListFragment extends Fragment {
      * 获得 Moon 入轨配置列表
      */
     private List<MoonOrbit> getMoonOrbitList() {
-        DaoSession daoSession = ((ZerotierFixApplication) requireActivity().getApplication()).getDaoSession();
-        return daoSession.getMoonOrbitDao().loadAll();
+        return ((ZerotierFixApplication) requireActivity().getApplication()).getDatabase().moonOrbitDao().loadAll();
     }
 
     /**
@@ -560,12 +552,13 @@ public class NetworkListFragment extends Fragment {
                 // 更新 DB 中的网络状态
                 DatabaseUtils.writeLock.lock();
                 try {
+                    AppDatabase database = ((ZerotierFixApplication) requireActivity().getApplication()).getDatabase();
                     for (var network : this.mNetworks) {
                         network.setLastActivated(false);
-                        network.update();
+                        database.networkDao().update(network);
                     }
                     selectedNetwork.setLastActivated(true);
-                    selectedNetwork.update();
+                    database.networkDao().update(selectedNetwork);
                 } finally {
                     DatabaseUtils.writeLock.unlock();
                 }
@@ -725,10 +718,7 @@ public class NetworkListFragment extends Fragment {
                 popupMenu.setOnMenuItemClickListener(menuItem -> {
                     if (menuItem.getItemId() == R.id.menu_item_delete_network) {
                         // 删除对应网络
-                        DaoSession daoSession = ((ZerotierFixApplication) that.requireActivity().getApplication()).getDaoSession();
-                        AssignedAddressDao assignedAddressDao = daoSession.getAssignedAddressDao();
-                        NetworkConfigDao networkConfigDao = daoSession.getNetworkConfigDao();
-                        NetworkDao networkDao = daoSession.getNetworkDao();
+                        AppDatabase database = ((ZerotierFixApplication) that.requireActivity().getApplication()).getDatabase();
                         if (this.mItem != null) {
                             // 如果删除的是当前连接的网络，则停止服务
                             var connectedNetworkId = that.viewModel.getConnectNetworkId().getValue();
@@ -736,19 +726,10 @@ public class NetworkListFragment extends Fragment {
                                 that.stopService();
                             }
                             // 从 DB 中删除网络
-                            NetworkConfig networkConfig = this.mItem.getNetworkConfig();
-                            if (networkConfig != null) {
-                                List<AssignedAddress> assignedAddresses = networkConfig.getAssignedAddresses();
-                                if (!assignedAddresses.isEmpty()) {
-                                    for (AssignedAddress assignedAddress : assignedAddresses) {
-                                        assignedAddressDao.delete(assignedAddress);
-                                    }
-                                }
-                                networkConfigDao.delete(networkConfig);
-                            }
-                            networkDao.delete(this.mItem);
+                            database.assignedAddressDao().deleteByNetworkId(this.mItem.getNetworkId());
+                            database.networkConfigDao().deleteById(this.mItem.getNetworkConfigId());
+                            database.networkDao().delete(this.mItem);
                         }
-                        daoSession.clear();
                         // 更新数据
                         that.updateNetworkListAndNotify();
                         return true;

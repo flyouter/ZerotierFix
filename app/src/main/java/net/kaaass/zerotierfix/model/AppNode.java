@@ -1,24 +1,24 @@
 package net.kaaass.zerotierfix.model;
 
-import org.greenrobot.greendao.annotation.Entity;
-import org.greenrobot.greendao.annotation.Generated;
-import org.greenrobot.greendao.annotation.Id;
+import androidx.room.ColumnInfo;
+import androidx.room.Entity;
+import androidx.room.PrimaryKey;
 
-@Entity
+@Entity(tableName = "APP_NODE")
 public class AppNode {
 
-    @Id
+    @PrimaryKey
+    @ColumnInfo(name = "_id")
     private Long nodeId;
 
+    @ColumnInfo(name = "NODE_ID_STR")
     private String nodeIdStr;
 
-    @Generated(hash = 1756503982)
     public AppNode(Long nodeId, String nodeIdStr) {
         this.nodeId = nodeId;
         this.nodeIdStr = nodeIdStr;
     }
 
-    @Generated(hash = 714894196)
     public AppNode() {
     }
 
