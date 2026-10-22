@@ -101,6 +101,8 @@ jobs:
             echo "::error::Tag '$TAG' does not match app version '$APP_VERSION' (versionName: '$VERSION_NAME')"
             exit 1
           fi
+          # 完整 versionName（含 +core.x.y），用于发布包文件名
+          echo "APP_VERSION_FULL=$VERSION_NAME" >> "$GITHUB_ENV"
 
           # 标题与 prerelease 判定，沿用历史格式
           case "$TAG" in
@@ -148,7 +150,11 @@ jobs:
             exit 1
           fi
 
-          ASSET_NAME="${GITHUB_REF_NAME//\//-}.apk"
+          if [ -z "${APP_VERSION_FULL:-}" ]; then
+            echo "::error::APP_VERSION_FULL is empty"
+            exit 1
+          fi
+          ASSET_NAME="zerotier-fix-${APP_VERSION_FULL}.apk"
           cp "$SRC" "$ASSET_NAME"
           echo "RELEASE_ASSET=$ASSET_NAME" >> "$GITHUB_ENV"
 
