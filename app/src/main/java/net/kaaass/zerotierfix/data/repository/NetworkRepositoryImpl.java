@@ -2,16 +2,11 @@ package net.kaaass.zerotierfix.data.repository;
 
 import android.util.Log;
 
+import net.kaaass.zerotierfix.data.database.AppDatabase;
 import net.kaaass.zerotierfix.data.database.DatabaseUtils;
-import net.kaaass.zerotierfix.data.database.entity.AssignedAddress;
-import net.kaaass.zerotierfix.data.database.entity.AssignedAddressDao;
-import net.kaaass.zerotierfix.data.database.entity.DaoSession;
 import net.kaaass.zerotierfix.data.database.entity.DnsServer;
-import net.kaaass.zerotierfix.data.database.entity.DnsServerDao;
 import net.kaaass.zerotierfix.data.database.entity.Network;
 import net.kaaass.zerotierfix.data.database.entity.NetworkConfig;
-import net.kaaass.zerotierfix.data.database.entity.NetworkConfigDao;
-import net.kaaass.zerotierfix.data.database.entity.NetworkDao;
 import net.kaaass.zerotierfix.model.dto.JoinNetworkRequest;
 import net.kaaass.zerotierfix.model.dto.NetworkConfigDto;
 import net.kaaass.zerotierfix.model.dto.NetworkSummary;
@@ -21,31 +16,28 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * {@link NetworkRepository} 的 GreenDAO 实现。
+ * {@link NetworkRepository} 的 Room 实现。
  */
 public final class NetworkRepositoryImpl implements NetworkRepository {
 
     private static final String TAG = "NetworkRepository";
 
-    private final DaoSession daoSession;
+    private final AppDatabase database;
 
     /**
      * 创建网络仓库。
      *
-     * @param daoSession 应用级数据库会话，不能为空
+     * @param database 应用级 Room 数据库，不能为空
      */
-    public NetworkRepositoryImpl(DaoSession daoSession) {
-        this.daoSession = daoSession;
+    public NetworkRepositoryImpl(AppDatabase database) {
+        this.database = database;
     }
 
     @Override
     public List<NetworkSummary> getAllNetworks() {
         DatabaseUtils.readLock.lock();
         try {
-            List<Network> networks = this.daoSession.getNetworkDao()
-                    .queryBuilder()
-                    .orderAsc(NetworkDao.Properties.NetworkId)
-                    .list();
+            List<Network> networks = this.database.loadNetworks();
             List<NetworkSummary> result = new ArrayList<>(networks.size());
             for (Network network : networks) {
                 result.add(toSummary(network));
@@ -60,7 +52,7 @@ public final class NetworkRepositoryImpl implements NetworkRepository {
     public NetworkSummary getNetworkSummary(long networkId) {
         DatabaseUtils.readLock.lock();
         try {
-            Network network = this.daoSession.getNetworkDao().load(networkId);
+            Network network = this.database.loadNetwork(networkId);
             return network == null ? null : toSummary(network);
         } finally {
             DatabaseUtils.readLock.unlock();
@@ -71,21 +63,14 @@ public final class NetworkRepositoryImpl implements NetworkRepository {
     public NetworkConfigDto getNetworkConfig(long networkId) {
         DatabaseUtils.readLock.lock();
         try {
-            Network network = this.daoSession.getNetworkDao().load(networkId);
-            if (network == null) {
+            Network network = this.database.loadNetwork(networkId);
+            if (network == null || network.getNetworkConfig() == null) {
                 return null;
             }
-            NetworkConfig config = this.daoSession.getNetworkConfigDao()
-                    .load(network.getNetworkConfigId());
-            if (config == null) {
-                return null;
-            }
+            NetworkConfig config = network.getNetworkConfig();
             List<String> dnsServers = new ArrayList<>();
-            List<DnsServer> servers = config.getDnsServers();
-            if (servers != null) {
-                for (DnsServer server : servers) {
-                    dnsServers.add(server.getNameserver());
-                }
+            for (DnsServer server : this.database.dnsServerDao().findByNetworkId(networkId)) {
+                dnsServers.add(server.getNameserver());
             }
             return new NetworkConfigDto(
                     config.getRouteViaZeroTier(),
@@ -101,10 +86,7 @@ public final class NetworkRepositoryImpl implements NetworkRepository {
     public Long getLastActivatedNetworkId() {
         DatabaseUtils.readLock.lock();
         try {
-            List<Network> networks = this.daoSession.getNetworkDao()
-                    .queryBuilder()
-                    .where(NetworkDao.Properties.LastActivated.eq(true))
-                    .list();
+            List<Network> networks = this.database.loadLastActivatedNetworks();
             if (networks.isEmpty()) {
                 return null;
             }
@@ -123,8 +105,8 @@ public final class NetworkRepositoryImpl implements NetworkRepository {
         DatabaseUtils.writeLock.lock();
         try {
             final boolean[] added = {false};
-            this.daoSession.runInTx(() -> {
-                if (this.daoSession.getNetworkDao().load(request.getNetworkId()) != null) {
+            this.database.runInTransaction(() -> {
+                if (this.database.networkDao().countById(request.getNetworkId()) > 0) {
                     return;
                 }
                 NetworkConfig config = new NetworkConfig(
@@ -132,15 +114,15 @@ public final class NetworkRepositoryImpl implements NetworkRepository {
                         request.isRouteViaZeroTier(),
                         request.getDnsMode()
                 );
-                this.daoSession.getNetworkConfigDao().insert(config);
+                this.database.networkConfigDao().insert(config);
                 if (request.getDnsMode() == DNSMode.CUSTOM_DNS.toInt()) {
                     for (String server : request.getDnsServers()) {
-                        this.daoSession.getDnsServerDao().insert(
+                        this.database.dnsServerDao().insert(
                                 new DnsServer(null, request.getNetworkId(), server)
                         );
                     }
                 }
-                this.daoSession.getNetworkDao().insert(new Network(
+                this.database.networkDao().insert(new Network(
                         request.getNetworkId(),
                         request.getNetworkIdStr(),
                         null,
@@ -160,14 +142,14 @@ public final class NetworkRepositoryImpl implements NetworkRepository {
     public void setLastActivated(long networkId) {
         DatabaseUtils.writeLock.lock();
         try {
-            this.daoSession.runInTx(() -> {
-                List<Network> networks = this.daoSession.getNetworkDao().loadAll();
+            this.database.runInTransaction(() -> {
+                List<Network> networks = this.database.networkDao().loadAllOrdered();
                 for (Network network : networks) {
                     boolean active = network.getNetworkId() != null
                             && network.getNetworkId() == networkId;
                     if (network.getLastActivated() != active) {
                         network.setLastActivated(active);
-                        this.daoSession.getNetworkDao().update(network);
+                        this.database.networkDao().update(network);
                     }
                 }
             });
@@ -183,12 +165,12 @@ public final class NetworkRepositoryImpl implements NetworkRepository {
         }
         DatabaseUtils.writeLock.lock();
         try {
-            Network network = this.daoSession.getNetworkDao().load(networkId);
+            Network network = this.database.networkDao().findById(networkId);
             if (network == null) {
                 return;
             }
             network.setNetworkName(networkName);
-            this.daoSession.getNetworkDao().update(network);
+            this.database.networkDao().update(network);
         } finally {
             DatabaseUtils.writeLock.unlock();
         }
@@ -198,17 +180,13 @@ public final class NetworkRepositoryImpl implements NetworkRepository {
     public void updateRouteViaZeroTier(long networkId, boolean routeViaZeroTier) {
         DatabaseUtils.writeLock.lock();
         try {
-            Network network = this.daoSession.getNetworkDao().load(networkId);
-            if (network == null) {
+            Network network = this.database.loadNetwork(networkId);
+            if (network == null || network.getNetworkConfig() == null) {
                 return;
             }
-            NetworkConfig config = this.daoSession.getNetworkConfigDao()
-                    .load(network.getNetworkConfigId());
-            if (config == null) {
-                return;
-            }
+            NetworkConfig config = network.getNetworkConfig();
             config.setRouteViaZeroTier(routeViaZeroTier);
-            this.daoSession.getNetworkConfigDao().update(config);
+            this.database.networkConfigDao().update(config);
         } finally {
             DatabaseUtils.writeLock.unlock();
         }
@@ -218,31 +196,15 @@ public final class NetworkRepositoryImpl implements NetworkRepository {
     public void deleteNetwork(long networkId) {
         DatabaseUtils.writeLock.lock();
         try {
-            this.daoSession.runInTx(() -> {
-                Network network = this.daoSession.getNetworkDao().load(networkId);
+            this.database.runInTransaction(() -> {
+                Network network = this.database.networkDao().findById(networkId);
                 if (network == null) {
                     return;
                 }
-                List<AssignedAddress> addresses = this.daoSession.getAssignedAddressDao()
-                        .queryBuilder()
-                        .where(AssignedAddressDao.Properties.NetworkId.eq(networkId))
-                        .list();
-                for (AssignedAddress address : addresses) {
-                    this.daoSession.getAssignedAddressDao().delete(address);
-                }
-                List<DnsServer> dnsServers = this.daoSession.getDnsServerDao()
-                        .queryBuilder()
-                        .where(DnsServerDao.Properties.NetworkId.eq(networkId))
-                        .list();
-                for (DnsServer server : dnsServers) {
-                    this.daoSession.getDnsServerDao().delete(server);
-                }
-                NetworkConfig config = this.daoSession.getNetworkConfigDao()
-                        .load(network.getNetworkConfigId());
-                if (config != null) {
-                    this.daoSession.getNetworkConfigDao().delete(config);
-                }
-                this.daoSession.getNetworkDao().delete(network);
+                this.database.assignedAddressDao().deleteByNetworkId(networkId);
+                this.database.dnsServerDao().deleteByNetworkId(networkId);
+                this.database.networkConfigDao().deleteById(network.getNetworkConfigId());
+                this.database.networkDao().delete(network);
             });
         } finally {
             DatabaseUtils.writeLock.unlock();

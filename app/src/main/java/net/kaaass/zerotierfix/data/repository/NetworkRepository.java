@@ -10,7 +10,7 @@ import java.util.List;
  * 网络数据仓库。
  *
  * <p>方法为同步调用，内部通过 {@code DatabaseUtils} 的读写锁保护数据库访问；
- * 调用方负责选择合适的线程。返回值均为 DTO，不暴露 GreenDAO 实体。</p>
+ * 调用方负责选择合适的线程。返回值均为 DTO，不暴露 Room 实体。</p>
  */
 public interface NetworkRepository {
 

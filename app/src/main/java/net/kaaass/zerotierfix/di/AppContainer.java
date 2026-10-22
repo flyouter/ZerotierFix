@@ -2,9 +2,7 @@ package net.kaaass.zerotierfix.di;
 
 import android.content.Context;
 
-import net.kaaass.zerotierfix.data.database.ZTOpenHelper;
-import net.kaaass.zerotierfix.data.database.entity.DaoMaster;
-import net.kaaass.zerotierfix.data.database.entity.DaoSession;
+import net.kaaass.zerotierfix.data.database.AppDatabase;
 import net.kaaass.zerotierfix.data.repository.AppNodeRepository;
 import net.kaaass.zerotierfix.data.repository.AppNodeRepositoryImpl;
 import net.kaaass.zerotierfix.data.repository.MoonOrbitRepository;
@@ -15,13 +13,13 @@ import net.kaaass.zerotierfix.data.repository.NetworkRepositoryImpl;
 /**
  * 应用级依赖容器（手动依赖注入）。
  *
- * <p>集中创建数据库会话与 Repository 实例，避免各页面和服务重复初始化。
+ * <p>集中创建 Room 数据库与 Repository 实例，避免各页面和服务重复初始化。
  * 生命周期与 {@link android.app.Application} 一致。</p>
  */
 public final class AppContainer {
 
-    /** 应用级数据库会话。 */
-    private final DaoSession daoSession;
+    /** 应用级 Room 数据库。 */
+    private final AppDatabase database;
 
     /** 网络数据仓库。 */
     private final NetworkRepository networkRepository;
@@ -38,13 +36,11 @@ public final class AppContainer {
      * @param context 应用上下文，不能为空
      */
     public AppContainer(Context context) {
-        this.daoSession = new DaoMaster(
-                new ZTOpenHelper(context, "ztfixdb", null).getWritableDatabase()
-        ).newSession();
-        this.networkRepository = new NetworkRepositoryImpl(this.daoSession);
-        this.moonOrbitRepository = new MoonOrbitRepositoryImpl(
-                this.daoSession, context.getApplicationContext());
-        this.appNodeRepository = new AppNodeRepositoryImpl(this.daoSession);
+        Context appContext = context.getApplicationContext();
+        this.database = AppDatabase.getInstance(appContext);
+        this.networkRepository = new NetworkRepositoryImpl(this.database);
+        this.moonOrbitRepository = new MoonOrbitRepositoryImpl(this.database, appContext);
+        this.appNodeRepository = new AppNodeRepositoryImpl(this.database);
     }
 
     /**
@@ -73,5 +69,4 @@ public final class AppContainer {
     public AppNodeRepository getAppNodeRepository() {
         return appNodeRepository;
     }
-
 }

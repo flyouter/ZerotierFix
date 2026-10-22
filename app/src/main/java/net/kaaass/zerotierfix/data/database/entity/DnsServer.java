@@ -1,36 +1,37 @@
 package net.kaaass.zerotierfix.data.database.entity;
 
-import org.greenrobot.greendao.annotation.Entity;
-import org.greenrobot.greendao.annotation.Id;
-import org.greenrobot.greendao.annotation.Generated;
+import androidx.room.ColumnInfo;
+import androidx.room.Entity;
+import androidx.room.PrimaryKey;
 
-@Entity
+@Entity(tableName = "DNS_SERVER")
 public class DnsServer {
 
     /**
      * 自增主键。
      */
-    @Id
+    @PrimaryKey
+    @ColumnInfo(name = "_id")
     private Long id;
 
     /**
      * 所属网络 ID（十进制）。
      */
+    @ColumnInfo(name = "NETWORK_ID")
     private Long networkId;
 
     /**
      * DNS 服务器地址。
      */
+    @ColumnInfo(name = "NAMESERVER")
     private String nameserver;
 
-    @Generated(hash = 1177086365)
     public DnsServer(Long id, Long networkId, String nameserver) {
         this.id = id;
         this.networkId = networkId;
         this.nameserver = nameserver;
     }
 
-    @Generated(hash = 1462226712)
     public DnsServer() {
     }
 

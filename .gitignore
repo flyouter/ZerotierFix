@@ -14,3 +14,9 @@
 .cxx
 local.properties
 .idea
+
+# Claude Code local files（.claude/rules 与 CLAUDE.md 需要入库）
+.claude/settings.local.json
+.claude/*.local.*
+CLAUDE.local.md
+.mcp.json

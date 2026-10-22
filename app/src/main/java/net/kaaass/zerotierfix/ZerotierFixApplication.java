@@ -1,8 +1,7 @@
 package net.kaaass.zerotierfix;
 
+import android.app.Application;
 import android.util.Log;
-
-import androidx.multidex.MultiDexApplication;
 
 import net.kaaass.zerotierfix.di.AppContainer;
 
@@ -14,7 +13,7 @@ import net.kaaass.zerotierfix.di.AppContainer;
  *
  * @author kaaass
  */
-public class ZerotierFixApplication extends MultiDexApplication {
+public class ZerotierFixApplication extends Application {
 
     /** 应用级依赖容器，在 {@link #onCreate()} 中初始化。 */
     private AppContainer appContainer;

@@ -2,10 +2,9 @@ package net.kaaass.zerotierfix.data.repository;
 
 import android.content.Context;
 
+import net.kaaass.zerotierfix.data.database.AppDatabase;
 import net.kaaass.zerotierfix.data.database.DatabaseUtils;
-import net.kaaass.zerotierfix.data.database.entity.DaoSession;
 import net.kaaass.zerotierfix.data.database.entity.MoonOrbit;
-import net.kaaass.zerotierfix.data.database.entity.MoonOrbitDao;
 import net.kaaass.zerotierfix.model.dto.MoonOrbitDto;
 
 import java.io.File;
@@ -13,21 +12,21 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * {@link MoonOrbitRepository} 的 GreenDAO 实现。
+ * {@link MoonOrbitRepository} 的 Room 实现。
  */
 public final class MoonOrbitRepositoryImpl implements MoonOrbitRepository {
 
-    private final DaoSession daoSession;
+    private final AppDatabase database;
     private final Context context;
 
     /**
      * 创建 Moon 入轨仓库。
      *
-     * @param daoSession 应用级数据库会话，不能为空
-     * @param context    应用上下文，用于定位缓存文件
+     * @param database 应用级 Room 数据库，不能为空
+     * @param context  应用上下文，用于定位缓存文件
      */
-    public MoonOrbitRepositoryImpl(DaoSession daoSession, Context context) {
-        this.daoSession = daoSession;
+    public MoonOrbitRepositoryImpl(AppDatabase database, Context context) {
+        this.database = database;
         this.context = context.getApplicationContext();
     }
 
@@ -35,7 +34,7 @@ public final class MoonOrbitRepositoryImpl implements MoonOrbitRepository {
     public List<MoonOrbitDto> getAll() {
         DatabaseUtils.readLock.lock();
         try {
-            List<MoonOrbit> orbits = this.daoSession.getMoonOrbitDao().loadAll();
+            List<MoonOrbit> orbits = this.database.moonOrbitDao().loadAll();
             List<MoonOrbitDto> result = new ArrayList<>(orbits.size());
             for (MoonOrbit orbit : orbits) {
                 result.add(toDto(orbit));
@@ -50,11 +49,7 @@ public final class MoonOrbitRepositoryImpl implements MoonOrbitRepository {
     public boolean exists(long moonWorldId) {
         DatabaseUtils.readLock.lock();
         try {
-            return this.daoSession.getMoonOrbitDao()
-                    .queryBuilder()
-                    .where(MoonOrbitDao.Properties.MoonWorldId.eq(moonWorldId))
-                    .buildCount()
-                    .count() > 0;
+            return this.database.moonOrbitDao().countByWorldId(moonWorldId) > 0;
         } finally {
             DatabaseUtils.readLock.unlock();
         }
@@ -65,11 +60,11 @@ public final class MoonOrbitRepositoryImpl implements MoonOrbitRepository {
         DatabaseUtils.writeLock.lock();
         try {
             final boolean[] added = {false};
-            this.daoSession.runInTx(() -> {
+            this.database.runInTransaction(() -> {
                 if (exists(moonWorldId)) {
                     return;
                 }
-                this.daoSession.getMoonOrbitDao().insert(
+                this.database.moonOrbitDao().insert(
                         new MoonOrbit(moonWorldId, moonSeed, fromFile)
                 );
                 added[0] = true;
@@ -84,16 +79,12 @@ public final class MoonOrbitRepositoryImpl implements MoonOrbitRepository {
     public void remove(long moonWorldId, long moonSeed) {
         DatabaseUtils.writeLock.lock();
         try {
-            MoonOrbit orbit = this.daoSession.getMoonOrbitDao()
-                    .queryBuilder()
-                    .where(MoonOrbitDao.Properties.MoonWorldId.eq(moonWorldId),
-                            MoonOrbitDao.Properties.MoonSeed.eq(moonSeed))
-                    .build()
-                    .unique();
+            MoonOrbit orbit = this.database.moonOrbitDao()
+                    .findByWorldAndSeed(moonWorldId, moonSeed);
             if (orbit == null) {
                 return;
             }
-            this.daoSession.getMoonOrbitDao().delete(orbit);
+            this.database.moonOrbitDao().delete(orbit);
         } finally {
             DatabaseUtils.writeLock.unlock();
         }

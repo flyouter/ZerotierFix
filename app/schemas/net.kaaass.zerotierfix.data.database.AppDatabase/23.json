@@ -1,0 +1,246 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 23,
+    "identityHash": "61fcebf37856a4ee70768f4b70bcc718",
+    "entities": [
+      {
+        "tableName": "APP_NODE",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`_id` INTEGER, `NODE_ID_STR` TEXT, PRIMARY KEY(`_id`))",
+        "fields": [
+          {
+            "fieldPath": "nodeId",
+            "columnName": "_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "nodeIdStr",
+            "columnName": "NODE_ID_STR",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "_id"
+          ]
+        }
+      },
+      {
+        "tableName": "ASSIGNED_ADDRESS",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`_id` INTEGER, `NETWORK_ID` INTEGER NOT NULL, `TYPE` INTEGER, `ADDRESS_BYTES` BLOB, `ADDRESS_STRING` TEXT, `PREFIX` INTEGER NOT NULL, PRIMARY KEY(`_id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "networkId",
+            "columnName": "NETWORK_ID",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "type",
+            "columnName": "TYPE",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "addressBytes",
+            "columnName": "ADDRESS_BYTES",
+            "affinity": "BLOB"
+          },
+          {
+            "fieldPath": "addressString",
+            "columnName": "ADDRESS_STRING",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "prefix",
+            "columnName": "PREFIX",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "_id"
+          ]
+        }
+      },
+      {
+        "tableName": "DNS_SERVER",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`_id` INTEGER, `NETWORK_ID` INTEGER, `NAMESERVER` TEXT, PRIMARY KEY(`_id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "networkId",
+            "columnName": "NETWORK_ID",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "nameserver",
+            "columnName": "NAMESERVER",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "_id"
+          ]
+        }
+      },
+      {
+        "tableName": "MOON_ORBIT",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`_id` INTEGER, `MOON_SEED` INTEGER, `FROM_FILE` INTEGER NOT NULL, PRIMARY KEY(`_id`))",
+        "fields": [
+          {
+            "fieldPath": "moonWorldId",
+            "columnName": "_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "moonSeed",
+            "columnName": "MOON_SEED",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "fromFile",
+            "columnName": "FROM_FILE",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "_id"
+          ]
+        }
+      },
+      {
+        "tableName": "NETWORK",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`_id` INTEGER, `NETWORK_ID_STR` TEXT, `NETWORK_NAME` TEXT, `USE_DEFAULT_ROUTE` INTEGER NOT NULL, `LAST_ACTIVATED` INTEGER NOT NULL, `NETWORK_CONFIG_ID` INTEGER NOT NULL, PRIMARY KEY(`_id`))",
+        "fields": [
+          {
+            "fieldPath": "networkId",
+            "columnName": "_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "networkIdStr",
+            "columnName": "NETWORK_ID_STR",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "networkName",
+            "columnName": "NETWORK_NAME",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "useDefaultRoute",
+            "columnName": "USE_DEFAULT_ROUTE",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastActivated",
+            "columnName": "LAST_ACTIVATED",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "networkConfigId",
+            "columnName": "NETWORK_CONFIG_ID",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "_id"
+          ]
+        }
+      },
+      {
+        "tableName": "NETWORK_CONFIG",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`_id` INTEGER, `TYPE` INTEGER, `STATUS` INTEGER, `MAC` TEXT, `MTU` TEXT, `BROADCAST` INTEGER NOT NULL, `BRIDGING` INTEGER NOT NULL, `ROUTE_VIA_ZERO_TIER` INTEGER NOT NULL, `USE_CUSTOM_DNS` INTEGER NOT NULL, `DNS_MODE` INTEGER NOT NULL, PRIMARY KEY(`_id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "_id",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "type",
+            "columnName": "TYPE",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "STATUS",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "mac",
+            "columnName": "MAC",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "mtu",
+            "columnName": "MTU",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "broadcast",
+            "columnName": "BROADCAST",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "bridging",
+            "columnName": "BRIDGING",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "routeViaZeroTier",
+            "columnName": "ROUTE_VIA_ZERO_TIER",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "useCustomDNS",
+            "columnName": "USE_CUSTOM_DNS",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dnsMode",
+            "columnName": "DNS_MODE",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "_id"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '61fcebf37856a4ee70768f4b70bcc718')"
+    ]
+  }
+}

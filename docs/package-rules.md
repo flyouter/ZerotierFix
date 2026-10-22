@@ -76,7 +76,21 @@
 | 废弃事件 | 删除 `ErrorEvent`、`JoinNetworkEvent`、`LeaveNetworkEvent` |
 | Service 拆分 | 抽出 `vpn/config/DnsConfigurator`、`service/VpnNotificationController`，`ZeroTierOneService` 降至约 980 行 |
 
-### 2.4 待完成
+### 2.4 合并 dev 与 Room 适配（2026-10-23）
+
+`dev` 分支已通过 `chore/deps-upgrade` 完成 Gradle 9.8.2 / AGP 9.4.1 / JDK 17 升级，并用 Room 替换 GreenDAO。本次将 `dev` 合并进重构分支，并做如下适配：
+
+| 项 | 结果 |
+|---|---|
+| 数据层 | Room 实体移到 `data/database/entity`，DAO 移到 `data/database/dao`，`AppDatabase` 放在 `data/database` |
+| 迁移工具 | 删除 GreenDAO 的 `ZTOpenHelper`；旧库由 Room `fallbackToDestructiveMigration` 重建 |
+| Repository | 三个 Repository 实现改为基于 `AppDatabase` + Room DAO |
+| 依赖入口 | `AppContainer` 创建 `AppDatabase`，页面/Service 仍只依赖 Repository |
+| 工具链 | 采用 dev 的 Gradle 9.8.2 / AGP 9.4.1 / compileSdk 37 / minSdk 29 |
+| Schema | 导出 schema 移到 `app/schemas/net.kaaass.zerotierfix.data.database.AppDatabase/` |
+| 业务代码 | UI、Service、事件、DTO 保持本次重构结果；dev 的 Room 适配改动由 Repository 替代 |
+
+### 2.5 待完成
 
 1. **继续瘦身 `ZeroTierOneService`**：可抽 `TunnelConfigurator`、多播扫描线程；保持现有事务/线程边界。
 2. **补齐 `vpn` 内部类的方法 Javadoc**。

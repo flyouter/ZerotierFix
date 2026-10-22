@@ -1,48 +1,52 @@
 package net.kaaass.zerotierfix.data.database.entity;
 
-import org.greenrobot.greendao.annotation.Convert;
-import org.greenrobot.greendao.annotation.Entity;
-import org.greenrobot.greendao.annotation.Id;
-import org.greenrobot.greendao.converter.PropertyConverter;
-import org.greenrobot.greendao.annotation.Generated;
+import androidx.room.ColumnInfo;
+import androidx.room.Entity;
+import androidx.room.PrimaryKey;
+import androidx.room.TypeConverter;
+import androidx.room.TypeConverters;
 
-@Entity
+@Entity(tableName = "ASSIGNED_ADDRESS")
 public class AssignedAddress {
 
     /**
      * 自增主键。
      */
-    @Id
+    @PrimaryKey
+    @ColumnInfo(name = "_id")
     private Long id;
 
     /**
      * 所属网络 ID（十进制）。
      */
+    @ColumnInfo(name = "NETWORK_ID")
     private long networkId;
 
     /**
      * 地址类型。
      */
-    @Convert(converter = AddressTypeConverter.class, columnType = Integer.class)
+    @TypeConverters(AddressTypeConverter.class)
+    @ColumnInfo(name = "TYPE")
     private AddressType type;
 
     /**
      * 地址的原始字节。
      */
+    @ColumnInfo(name = "ADDRESS_BYTES")
     private byte[] addressBytes;
 
     /**
      * 地址的可读字符串。
      */
+    @ColumnInfo(name = "ADDRESS_STRING")
     private String addressString;
 
     /**
      * 地址前缀长度。
      */
+    @ColumnInfo(name = "PREFIX")
     private short prefix;
-    
 
-    @Generated(hash = 294212135)
     public AssignedAddress(Long id, long networkId, AddressType type, byte[] addressBytes,
             String addressString, short prefix) {
         this.id = id;
@@ -53,7 +57,6 @@ public class AssignedAddress {
         this.prefix = prefix;
     }
 
-    @Generated(hash = 1516348015)
     public AssignedAddress() {
     }
 
@@ -140,8 +143,9 @@ public class AssignedAddress {
         }
     }
 
-    public static class AddressTypeConverter implements PropertyConverter<AddressType, Integer> {
-        public AddressType convertToEntityProperty(Integer num) {
+    public static class AddressTypeConverter {
+        @TypeConverter
+        public static AddressType convertToEntityProperty(Integer num) {
             if (num == null) {
                 return null;
             }
@@ -154,7 +158,8 @@ public class AssignedAddress {
             return AddressType.UNKNOWN;
         }
 
-        public Integer convertToDatabaseValue(AddressType addressType) {
+        @TypeConverter
+        public static Integer convertToDatabaseValue(AddressType addressType) {
             if (addressType == null) {
                 return null;
             }
