@@ -6,8 +6,8 @@ import com.zerotier.sdk.Node
 import com.zerotier.sdk.PacketSender
 import com.zerotier.sdk.ResultCode
 
-import net.kaaass.zerotierfix.service.ZeroTierOneService
 import net.kaaass.zerotierfix.util.DebugLog
+import net.kaaass.zerotierfix.vpn.engine.VpnRuntime
 
 import java.net.DatagramPacket
 import java.net.DatagramSocket
@@ -18,7 +18,7 @@ import java.net.SocketTimeoutException
  * UDP 通信组件，负责 ZeroTier 虚拟链路的数据收发。
  */
 class UdpCom(
-    private val ztService: ZeroTierOneService,
+    private val ztService: VpnRuntime,
     private val svrSocket: DatagramSocket?
 ) : PacketSender, Runnable {
 

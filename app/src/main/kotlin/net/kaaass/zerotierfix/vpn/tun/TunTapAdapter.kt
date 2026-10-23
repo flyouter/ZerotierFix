@@ -9,7 +9,7 @@ import com.zerotier.sdk.VirtualNetworkConfig
 import com.zerotier.sdk.VirtualNetworkFrameListener
 import com.zerotier.sdk.util.StringUtils as SdkStringUtils
 
-import net.kaaass.zerotierfix.service.ZeroTierOneService
+import net.kaaass.zerotierfix.vpn.engine.VpnRuntime
 import net.kaaass.zerotierfix.util.DebugLog
 import net.kaaass.zerotierfix.util.IPPacketUtils
 import net.kaaass.zerotierfix.util.InetAddressUtils
@@ -31,7 +31,7 @@ import java.util.Objects
  * TUN 与 ZeroTier 虚拟网络之间的帧转发适配器。
  */
 class TunTapAdapter(
-    private val ztService: ZeroTierOneService,
+    private val ztService: VpnRuntime,
     private val networkId: Long
 ) : VirtualNetworkFrameListener {
 

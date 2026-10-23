@@ -3,11 +3,10 @@ package net.kaaass.zerotierfix.vpn.store
 import android.content.Context
 import android.util.Log
 
-import androidx.preference.PreferenceManager
-
 import com.zerotier.sdk.DataStoreGetListener
 import com.zerotier.sdk.DataStorePutListener
 
+import net.kaaass.zerotierfix.data.repository.SettingsRepository
 import net.kaaass.zerotierfix.util.Constants
 
 import java.io.File
@@ -21,8 +20,10 @@ import java.io.StringWriter
 /**
  * Zerotier 文件数据源。
  */
-class DataStore(private val context: Context) :
-    DataStoreGetListener, DataStorePutListener {
+class DataStore(
+    private val context: Context,
+    private val settingsRepository: SettingsRepository
+) : DataStoreGetListener, DataStorePutListener {
 
     override fun onDataStorePut(name: String, buffer: ByteArray, secure: Boolean): Int {
         Log.d(TAG, "Writing File: " + name + ", to: " + this.context.filesDir)
@@ -135,9 +136,7 @@ class DataStore(private val context: Context) :
      */
     internal fun hookPlanetFile(name: String): Boolean {
         if (Constants.FILE_PLANET == name) {
-            return PreferenceManager
-                .getDefaultSharedPreferences(this.context)
-                .getBoolean(Constants.PREF_PLANET_USE_CUSTOM, false)
+            return this.settingsRepository.isPlanetUseCustom
         }
         return false
     }
