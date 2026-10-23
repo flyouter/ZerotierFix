@@ -3,8 +3,8 @@
 > 规范正文已迁移到 [`.claude/rules/`](../.claude/rules/)，Claude Code 会自动加载。
 > 本文件只保留设计背景与迁移历史，不再作为规则来源。
 
-- **状态**：v4（2026-10-23，非 UI Kotlin 化完成）
-- **适用范围**：`app/src/main/kotlin/net/kaaass/zerotierfix`（非 UI）、`app/src/main/java/net/kaaass/zerotierfix`（UI）、`core` 模块，以及后续新增模块
+- **状态**：v5（2026-10-23，UI 迁移到 Compose + Material 3 完成）
+- **适用范围**：`app/src/main/kotlin/net/kaaass/zerotierfix`、`core` 模块，以及后续新增模块
 
 ---
 
@@ -106,10 +106,33 @@
 | 提交划分 | 5 个阶段提交：model/events → util → data+KSP → vpn → service/di/Application，每个提交均可独立构建 |
 | 遗留 Java | 仅 `features/**`、`ui/**` 共 19 个 UI 文件与 5 个 `package-info.java` |
 
-### 2.6 待完成
+### 2.6 UI 迁移：Java View → Compose + Material 3（2026-10-23）
 
-1. **运行期验证**：VPN 启停、TUN 数据面、ARP/NDP、EventBus 线程调度、通知、开机广播，以及旧版本覆盖安装的数据库兼容性，均待真机/模拟器验证。
-2. **继续瘦身 `ZeroTierOneService`**：当前 969 行；`TunnelConfigurator` 是候选拆分点，拆分保持现有事务/线程边界。
-3. **`vpn` 内部类的方法 KDoc** 仍有缺口。
-4. **测试**：优先覆盖 `util`（地址/路由/IP 包）、ARP/NDP、Repository。
-5. **UI 迁移（可选）**：`features/**`、`ui/**` 仍为 Java；迁移保持现有 Java 互操作约束。
+一次性破坏性替换，不保留旧 UI、EventBus 或兼容层：
+
+| 项 | 结果 |
+|---|---|
+| 架构 | 单 Activity（`MainActivity`）+ Navigation Compose；字符串路由 `network_list` / `join` / `detail/{networkId}` / `moon` / `peer` / `settings` |
+| 页面 | 6 个 feature 全部改为 `XxxRoute` + `XxxScreen` + `XxxViewModel` + `XxxUiState`；`@Preview` 覆盖 Screen |
+| 状态 | 单向数据流：不可变 UiState、`StateFlow`、`SharedFlow<Effect>`、`collectAsStateWithLifecycle`、`LifecycleResumeEffect` |
+| 服务通信 | 删除 EventBus 与 `events/`；新增 `vpn/engine/VpnStateStore`（Service 写、UI 读）与 `VpnServiceCommands` 命令接口 |
+| 命令执行 | `service/AndroidVpnServiceCommands` 串行调度、按需绑定、`Mutex` 保护；不使用 `BIND_AUTO_CREATE` |
+| 绑定解耦 | `vpn/node`、`vpn/tun` 改依赖 `VpnRuntime`；`vpn/config/TunnelConfigurator` 通过 `TunnelHost` 获得平台能力 |
+| DI | 删除 `di/AppContainer`；改用 Hilt（`DatabaseModule`、`RepositoryModule`、`AppModule`、`DispatcherModule`） |
+| 设置 | 新增 `SettingsRepository` / Impl，封装 SharedPreferences 并暴露 `StateFlow<Settings>`；移除 `androidx.preference` |
+| 主题 | `Theme.Material3.DayNight.NoActionBar`；Compose `ZerotierFixTheme` 沿用原紫色/青色/绿色；删除 `attrs.xml`、`values-night/themes.xml` |
+| 资源 | 删除 `layout/`、`menu/`、`xml/preferences.xml`；`strings.xml` / `values-zh` / `colors.xml` 保留 |
+| 依赖 | 删除 EventBus、Lombok、appcompat、constraintlayout、navigation-fragment/ui、preference、recyclerview、swiperefreshlayout |
+| 源集 | `app/src/main/java` 清空；全部代码位于 `app/src/main/kotlin` |
+| Service | 移除 EventBus 与 `AppContainer`；写入 `VpnStateStore`；补充失败路径的 `STOPPED`；`stopZeroTier` 改为非阻塞幂等；抽出 `TunnelConfigurator` 后约 901 行 |
+| 行为修复 | 拒绝 VPN 授权后开关不置位；Moon/Peer 订阅随 ViewModel 结束；停止操作在后台线程执行；Join 表单状态在旋转后保留 |
+
+明确保留的历史行为：`default_route_enabled_networks` 只写不读、`StartupReceiver` 只记录日志、列表“最后一个已连接网络生效”、禁用 IPv6 时详情页地址显示字面量 `"null"`。
+
+### 2.7 待完成
+
+1. **运行期验证**：VPN 启停、TUN 数据面、ARP/NDP、Flow 线程调度、通知、开机广播，以及旧版本覆盖安装的数据库兼容性，均待真机/模拟器验证。
+2. **继续瘦身 `ZeroTierOneService`**：当前约 901 行；剩余拆分点与不拆理由见 `.claude/rules/03-service-and-methods.md`。
+3. **`vpn` 内部类的方法 KDoc** 仍有少量缺口。
+4. **测试**：已补 `VpnStateStoreTest`；后续优先覆盖 `util`（地址/路由/IP 包）、ARP/NDP、Repository、ViewModel。
+5. **Compose UI 测试**：建议先覆盖 NetworkList 与 Join。
