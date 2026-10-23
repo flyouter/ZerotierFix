@@ -12,7 +12,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 
 import net.kaaass.zerotierfix.R
-import net.kaaass.zerotierfix.features.networklist.NetworkListActivity
+import net.kaaass.zerotierfix.MainActivity
 import net.kaaass.zerotierfix.util.Constants
 
 /**
@@ -100,7 +100,7 @@ class VpnNotificationController(private val service: VpnService) {
         return PendingIntent.getActivity(
             this.service,
             0,
-            Intent(this.service, NetworkListActivity::class.java)
+            Intent(this.service, MainActivity::class.java)
                 .addFlags(
                     Intent.FLAG_ACTIVITY_NEW_TASK
                         or Intent.FLAG_ACTIVITY_SINGLE_TOP

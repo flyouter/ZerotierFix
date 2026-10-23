@@ -7,7 +7,6 @@ import android.os.Binder
 import android.os.Build
 import android.os.IBinder
 import android.os.ParcelFileDescriptor
-import android.preference.PreferenceManager
 import android.util.Log
 import android.widget.Toast
 
@@ -20,69 +19,92 @@ import com.zerotier.sdk.VirtualNetworkConfigListener
 import com.zerotier.sdk.VirtualNetworkConfigOperation
 import com.zerotier.sdk.util.StringUtils as SdkStringUtils
 
+import dagger.hilt.android.AndroidEntryPoint
+
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+
 import net.kaaass.zerotierfix.R
-import net.kaaass.zerotierfix.ZerotierFixApplication
 import net.kaaass.zerotierfix.data.database.DatabaseUtils
+import net.kaaass.zerotierfix.data.repository.AppNodeRepository
+import net.kaaass.zerotierfix.data.repository.MoonOrbitRepository
 import net.kaaass.zerotierfix.data.repository.NetworkRepository
-import net.kaaass.zerotierfix.events.AfterJoinNetworkEvent
-import net.kaaass.zerotierfix.events.IsServiceRunningReplyEvent
-import net.kaaass.zerotierfix.events.IsServiceRunningRequestEvent
-import net.kaaass.zerotierfix.events.NetworkConfigChangedByUserEvent
-import net.kaaass.zerotierfix.events.NetworkListReplyEvent
-import net.kaaass.zerotierfix.events.NetworkListRequestEvent
-import net.kaaass.zerotierfix.events.NetworkReconfigureEvent
-import net.kaaass.zerotierfix.events.NodeDestroyedEvent
-import net.kaaass.zerotierfix.events.NodeIDEvent
-import net.kaaass.zerotierfix.events.NodeStatusEvent
-import net.kaaass.zerotierfix.events.NodeStatusRequestEvent
-import net.kaaass.zerotierfix.events.OrbitMoonEvent
-import net.kaaass.zerotierfix.events.PeerInfoReplyEvent
-import net.kaaass.zerotierfix.events.PeerInfoRequestEvent
-import net.kaaass.zerotierfix.events.StopEvent
-import net.kaaass.zerotierfix.events.VPNErrorEvent
-import net.kaaass.zerotierfix.events.VirtualNetworkConfigChangedEvent
-import net.kaaass.zerotierfix.events.VirtualNetworkConfigReplyEvent
-import net.kaaass.zerotierfix.events.VirtualNetworkConfigRequestEvent
+import net.kaaass.zerotierfix.data.repository.SettingsRepository
 import net.kaaass.zerotierfix.model.dto.MoonOrbitDto
-import net.kaaass.zerotierfix.model.dto.NetworkConfigDto
 import net.kaaass.zerotierfix.model.dto.NetworkSummary
+import net.kaaass.zerotierfix.model.dto.PeerInfoDto
+import net.kaaass.zerotierfix.model.dto.VirtualNetworkConfigDto
 import net.kaaass.zerotierfix.model.enums.NetworkStatus
-import net.kaaass.zerotierfix.util.Constants
-import net.kaaass.zerotierfix.util.InetAddressUtils
 import net.kaaass.zerotierfix.util.NetworkInfoUtils
-import net.kaaass.zerotierfix.vpn.config.DnsConfigurator
+import net.kaaass.zerotierfix.vpn.config.TunnelConfigurator
+import net.kaaass.zerotierfix.vpn.config.TunnelHost
 import net.kaaass.zerotierfix.vpn.config.VirtualNetworkConfigMapper
+import net.kaaass.zerotierfix.vpn.engine.ServiceState
+import net.kaaass.zerotierfix.vpn.engine.VpnRuntime
+import net.kaaass.zerotierfix.vpn.engine.VpnStateStore
 import net.kaaass.zerotierfix.vpn.node.NodeInfoMapper
 import net.kaaass.zerotierfix.vpn.node.UdpCom
-import net.kaaass.zerotierfix.vpn.route.Route
 import net.kaaass.zerotierfix.vpn.store.DataStore
 import net.kaaass.zerotierfix.vpn.tun.TunTapAdapter
-
-import org.greenrobot.eventbus.EventBus
-import org.greenrobot.eventbus.Subscribe
-import org.greenrobot.eventbus.ThreadMode
 
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.net.DatagramSocket
-import java.net.Inet6Address
-import java.net.InetAddress
 import java.net.InetSocketAddress
-import java.nio.ByteBuffer
 import java.util.HashMap
 import java.util.concurrent.locks.ReentrantReadWriteLock
 
+import javax.inject.Inject
+
 /**
  * ZeroTier 前台 VPN 服务。
+ *
+ * 生命周期与状态写入：
+ * - 节点初始化成功后写 [VpnStateStore] 的 `RUNNING`，失败或停止路径写 `STOPPED`；
+ * - 节点状态、已连接网络列表与实时网络配置写入 [VpnStateStore]，由 UI 通过 Flow 读取；
+ * - 不再使用 EventBus，所有跨层通知均为状态或 [VpnStateStore] 的事件流。
+ *
+ * 线程：
+ * - `onStartCommand`、`onDestroy`、`onRevoke` 运行在主线程；
+ * - 重配任务与节点状态刷新运行在 [serviceScope] 的串行调度器上；
+ * - [stopZeroTier] 会 join 工作线程，调用方应位于后台线程（命令层已保证）。
  */
+@AndroidEntryPoint
 class ZeroTierOneService : VpnService(), Runnable, EventListener,
-    VirtualNetworkConfigListener {
+    VirtualNetworkConfigListener, VpnRuntime, TunnelHost {
+
+    @Inject
+    lateinit var networkRepository: NetworkRepository
+
+    @Inject
+    lateinit var appNodeRepository: AppNodeRepository
+
+    @Inject
+    lateinit var moonOrbitRepository: MoonOrbitRepository
+
+    @Inject
+    lateinit var settingsRepository: SettingsRepository
+
+    @Inject
+    lateinit var store: VpnStateStore
 
     private val mBinder: IBinder = ZeroTierBinder()
-    private val dataStore = DataStore(this)
-    private val eventBus = EventBus.getDefault()
     private val virtualNetworkConfigMap = HashMap<Long, VirtualNetworkConfig>()
 
+    private val serviceScope =
+        CoroutineScope(SupervisorJob() + Dispatchers.Default.limitedParallelism(1))
+
+    private val tunnelConfigurator by lazy {
+        TunnelConfigurator(this, networkRepository)
+    }
+
+    private val stopStateLock = Any()
+    private var isStopping = false
+
+    private var dataStore: DataStore? = null
     private var input: FileInputStream? = null
     private var output: FileOutputStream? = null
     private var svrSocket: DatagramSocket? = null
@@ -107,13 +129,20 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
 
     private var vpnThread: Thread? = null
 
+    override fun onCreate() {
+        super.onCreate()
+        // Hilt 字段注入在 super.onCreate() 中完成，DataStore 依赖 SettingsRepository，
+        // 因此不能使用字段初始化器提前构造。
+        this.dataStore = DataStore(this, settingsRepository)
+    }
+
     /**
      * 获取指定网络的实时配置。
      *
      * @param networkId 网络 ID
      * @return 网络配置；尚未收到配置时返回 `null`
      */
-    fun getVirtualNetworkConfig(networkId: Long): VirtualNetworkConfig? {
+    override fun getVirtualNetworkConfig(networkId: Long): VirtualNetworkConfig? {
         synchronized(this.virtualNetworkConfigMap) {
             return this.virtualNetworkConfigMap[networkId]
         }
@@ -168,21 +197,15 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
     /**
      * 设置下一次后台任务截止时间。
      *
+     * 线程：可在任意线程调用。
+     *
      * @param deadline 截止时间（毫秒时间戳）
      */
-    fun setNextBackgroundTaskDeadline(deadline: Long) {
+    override fun setNextBackgroundTaskDeadline(deadline: Long) {
         synchronized(this) {
             this.nextBackgroundTaskDeadline = deadline
         }
     }
-
-    /**
-     * 获取网络数据仓库。
-     *
-     * @return 网络仓库，非空
-     */
-    private fun getNetworkRepository(): NetworkRepository =
-        (application as ZerotierFixApplication).appContainer.networkRepository
 
     /**
      * 启动 ZT 服务，连接至给定网络或最近连接的网络。
@@ -191,17 +214,15 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
         Log.d(TAG, "onStartCommand")
         if (startId == 3) {
             Log.i(TAG, "Authorizing VPN")
+            markServiceStopped()
             return Service.START_NOT_STICKY
         } else if (intent == null) {
             Log.e(TAG, "NULL intent.  Cannot start")
+            markServiceStopped()
             return Service.START_NOT_STICKY
         }
         this.mStartID = startId
-
-        // 注册事件总线监听器
-        if (!this.eventBus.isRegistered(this)) {
-            this.eventBus.register(this)
-        }
+        store.setServiceState(ServiceState.STARTING)
 
         // 确定待启动的网络 ID
         val targetNetworkId: Long
@@ -210,9 +231,10 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
             targetNetworkId = intent.getLongExtra(ZT1_NETWORK_ID, 0)
         } else {
             // 默认启用最近一次启动的网络
-            val lastActivatedNetworkId = getNetworkRepository().getLastActivatedNetworkId()
+            val lastActivatedNetworkId = networkRepository.getLastActivatedNetworkId()
             if (lastActivatedNetworkId == null) {
                 Log.e(TAG, "Couldn't find last activated connection")
+                markServiceStopped()
                 return Service.START_NOT_STICKY
             }
             targetNetworkId = lastActivatedNetworkId
@@ -220,21 +242,21 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
         }
         if (targetNetworkId == 0L) {
             Log.e(TAG, "Network ID not provided to service")
+            markServiceStopped()
             stopSelf(startId)
             return Service.START_NOT_STICKY
         }
         this.networkId = targetNetworkId
 
         // 检查当前的网络环境
-        val preferences = PreferenceManager.getDefaultSharedPreferences(this)
-        val useCellularData =
-            preferences.getBoolean(Constants.PREF_NETWORK_USE_CELLULAR_DATA, false)
-        this.disableIPv6 = preferences.getBoolean(Constants.PREF_NETWORK_DISABLE_IPV6, false)
+        val useCellularData = settingsRepository.isCellularDataAllowed
+        this.disableIPv6 = settingsRepository.isIpv6Disabled
         val currentNetworkInfo = NetworkInfoUtils.getNetworkInfoCurrentConnection(this)
 
         if (currentNetworkInfo == NetworkInfoUtils.CurrentConnection.CONNECTION_NONE) {
             // 未连接网络
             Toast.makeText(this, R.string.toast_no_network, Toast.LENGTH_SHORT).show()
+            markServiceStopped()
             stopSelf(this.mStartID)
             return Service.START_NOT_STICKY
         } else if (currentNetworkInfo == NetworkInfoUtils.CurrentConnection.CONNECTION_MOBILE &&
@@ -242,6 +264,7 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
         ) {
             // 使用移动网络，但未在设置中允许移动网络访问
             Toast.makeText(this, R.string.toast_mobile_data, Toast.LENGTH_LONG).show()
+            markServiceStopped()
             stopSelf(this.mStartID)
             return Service.START_NOT_STICKY
         }
@@ -262,11 +285,11 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
 
                 // 创建本地节点
                 if (this.node == null) {
+                    val dataStore = this.dataStore!!
                     this.udpCom = UdpCom(this, this.svrSocket)
                     this.tunTapAdapter = TunTapAdapter(this, networkId)
 
                     // 创建节点对象并初始化
-                    val dataStore = this.dataStore
                     this.node = Node(System.currentTimeMillis())
                     val result = this.node!!.init(
                         dataStore, dataStore, this.udpCom!!, this, this.tunTapAdapter!!, this, null
@@ -276,18 +299,15 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
                         Log.d(TAG, "ZeroTierOne Node Initialized")
                     } else {
                         Log.e(TAG, "Error starting ZT1 Node: $result")
+                        markServiceStopped()
                         return Service.START_NOT_STICKY
                     }
-                    this.onNodeStatusRequest(null)
 
                     // 持久化当前节点信息
                     val address = this.node!!.address()
-                    (application as ZerotierFixApplication)
-                        .appContainer
-                        .appNodeRepository
-                        .saveNodeId(address)
+                    appNodeRepository.saveNodeId(address)
+                    store.setNodeId(appNodeRepository.getNodeIdStr())
 
-                    this.eventBus.post(NodeIDEvent(address))
                     this.udpCom!!.setNode(this.node!!)
                     this.tunTapAdapter!!.setNode(this.node!!)
 
@@ -310,129 +330,118 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
                 }
             } catch (e: Exception) {
                 Log.e(TAG, e.toString(), e)
+                markServiceStopped()
                 return Service.START_NOT_STICKY
             }
         }
+        store.setServiceState(ServiceState.RUNNING)
+        refreshNodeStatus()
+        refreshNetworkListState()
         joinNetwork(targetNetworkId)
         return Service.START_STICKY
     }
 
     /**
      * 停止 ZeroTier 服务并释放资源。
+     *
+     * 线程：会 join UDP / TUN / VPN 线程，应在后台线程调用。
+     * 幂等：已有停止流程在进行时立即返回，避免 `onDestroy` 或 UDP 线程
+     * 等待命令线程而互相阻塞。
      */
     fun stopZeroTier() {
-        val socket = this.svrSocket
-        if (socket != null) {
-            socket.close()
-            this.svrSocket = null
-        }
-        val udp = this.udpThread
-        if (udp != null && udp.isAlive) {
-            udp.interrupt()
-            try {
-                udp.join()
-            } catch (ignored: InterruptedException) {
+        synchronized(stopStateLock) {
+            if (this.isStopping) {
+                return
             }
-            this.udpThread = null
+            this.isStopping = true
         }
-        val adapter = this.tunTapAdapter
-        if (adapter != null && adapter.isRunning()) {
-            adapter.interrupt()
-            try {
-                adapter.join()
-            } catch (ignored: InterruptedException) {
+        try {
+            val socket = this.svrSocket
+            if (socket != null) {
+                socket.close()
+                this.svrSocket = null
             }
-            this.tunTapAdapter = null
-        }
-        val vpn = this.vpnThread
-        if (vpn != null && vpn.isAlive) {
-            vpn.interrupt()
-            try {
-                vpn.join()
-            } catch (ignored: InterruptedException) {
+            val udp = this.udpThread
+            if (udp != null && udp.isAlive && udp !== Thread.currentThread()) {
+                udp.interrupt()
+                try {
+                    udp.join()
+                } catch (ignored: InterruptedException) {
+                }
+                this.udpThread = null
             }
-            this.vpnThread = null
-        }
-        val v4 = this.v4MulticastScanner
-        if (v4 != null) {
-            v4.interrupt()
-            try {
-                v4.join()
-            } catch (ignored: InterruptedException) {
+            val adapter = this.tunTapAdapter
+            if (adapter != null && adapter.isRunning() && adapter !== Thread.currentThread()) {
+                adapter.interrupt()
+                try {
+                    adapter.join()
+                } catch (ignored: InterruptedException) {
+                }
+                this.tunTapAdapter = null
             }
-            this.v4MulticastScanner = null
-        }
-        val v6 = this.v6MulticastScanner
-        if (v6 != null) {
-            v6.interrupt()
-            try {
-                v6.join()
-            } catch (ignored: InterruptedException) {
+            val vpn = this.vpnThread
+            if (vpn != null && vpn.isAlive && vpn !== Thread.currentThread()) {
+                vpn.interrupt()
+                try {
+                    vpn.join()
+                } catch (ignored: InterruptedException) {
+                }
+                this.vpnThread = null
             }
-            this.v6MulticastScanner = null
-        }
-        val socket2 = this.vpnSocket
-        if (socket2 != null) {
-            try {
-                socket2.close()
-            } catch (e: Exception) {
-                Log.e(TAG, "Error closing VPN socket: $e", e)
+            val v4 = this.v4MulticastScanner
+            if (v4 != null) {
+                v4.interrupt()
+                try {
+                    v4.join()
+                } catch (ignored: InterruptedException) {
+                }
+                this.v4MulticastScanner = null
             }
-            this.vpnSocket = null
-        }
-        val node = this.node
-        if (node != null) {
-            this.eventBus.post(NodeDestroyedEvent())
-            node.close()
-            this.node = null
-        }
-        if (this.eventBus.isRegistered(this)) {
-            this.eventBus.unregister(this)
-        }
-        this.notificationController.cancel()
-        if (!stopSelfResult(this.mStartID)) {
-            Log.e(TAG, "stopSelfResult() failed!")
+            val v6 = this.v6MulticastScanner
+            if (v6 != null) {
+                v6.interrupt()
+                try {
+                    v6.join()
+                } catch (ignored: InterruptedException) {
+                }
+                this.v6MulticastScanner = null
+            }
+            closeVpnSocket()
+            val node = this.node
+            if (node != null) {
+                store.setNodeStatus(null)
+                node.close()
+                this.node = null
+            }
+            store.setServiceState(ServiceState.STOPPED)
+            this.notificationController.cancel()
+            if (!stopSelfResult(this.mStartID)) {
+                Log.e(TAG, "stopSelfResult() failed!")
+            }
+        } finally {
+            synchronized(stopStateLock) {
+                this.isStopping = false
+            }
         }
     }
 
     override fun onDestroy() {
         try {
             stopZeroTier()
-            val socket = this.vpnSocket
-            if (socket != null) {
-                try {
-                    socket.close()
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error closing VPN socket: $e", e)
-                }
-                this.vpnSocket = null
-            }
+            closeVpnSocket()
             stopSelf(this.mStartID)
-            if (this.eventBus.isRegistered(this)) {
-                this.eventBus.unregister(this)
-            }
         } catch (e: Exception) {
             Log.e(TAG, e.toString(), e)
         } finally {
+            serviceScope.cancel()
             super.onDestroy()
         }
     }
 
     override fun onRevoke() {
         stopZeroTier()
-        val socket = this.vpnSocket
-        if (socket != null) {
-            try {
-                socket.close()
-            } catch (e: Exception) {
-                Log.e(TAG, "Error closing VPN socket: $e", e)
-            }
-            this.vpnSocket = null
-        }
+        closeVpnSocket()
         stopSelf(this.mStartID)
-        if (this.eventBus.isRegistered(this)) {
-            this.eventBus.unregister(this)
-        }
         super.onRevoke()
     }
 
@@ -466,28 +475,21 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
         Log.d(TAG, "ZeroTierOne Service Ended")
     }
 
-    @Subscribe(threadMode = ThreadMode.POSTING)
-    fun onStopEvent(stopEvent: StopEvent) {
-        stopZeroTier()
-    }
-
-    @Subscribe(threadMode = ThreadMode.POSTING)
-    fun onIsServiceRunningRequest(event: IsServiceRunningRequestEvent) {
-        this.eventBus.post(IsServiceRunningReplyEvent(true))
-    }
-
     /**
      * 加入 ZT 网络。
+     *
+     * 线程：可在任意线程调用；内部同步调用 SDK。
      *
      * @param networkId 网络 ID
      */
     fun joinNetwork(networkId: Long) {
-        if (this.node == null) {
+        val node = this.node
+        if (node == null) {
             Log.e(TAG, "Can't join network if ZeroTier isn't running")
             return
         }
         // 连接到新网络
-        val result = this.node!!.join(networkId)
+        val result = node.join(networkId)
         if (result != ResultCode.RESULT_OK) {
             Log.e(
                 TAG,
@@ -495,21 +497,26 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
             )
             return
         }
-        // 连接后事件
-        this.eventBus.post(AfterJoinNetworkEvent())
+        // 连接后事件：入轨全部已保存的 Moon，并刷新已连接网络
+        orbitMoons(moonOrbitRepository.getAll())
+        refreshNetworkListState()
     }
 
     /**
      * 离开 ZT 网络。
      *
+     * 线程：可在任意线程调用；内部同步调用 SDK。
+     * 若离开后没有剩余网络，则停止服务并释放 VPN socket。
+     *
      * @param networkId 网络 ID
      */
     fun leaveNetwork(networkId: Long) {
-        if (this.node == null) {
+        val node = this.node
+        if (node == null) {
             Log.e(TAG, "Can't leave network if ZeroTier isn't running")
             return
         }
-        val result = this.node!!.leave(networkId)
+        val result = node.leave(networkId)
         if (result != ResultCode.RESULT_OK) {
             Log.e(
                 TAG,
@@ -517,106 +524,124 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
             )
             return
         }
-        val networkConfigs = this.node!!.networkConfigs()
+        refreshNetworkListState()
+        val networkConfigs = node.networkConfigs()
         if (networkConfigs != null && networkConfigs.isNotEmpty()) {
             return
         }
         stopZeroTier()
-        val socket = this.vpnSocket
-        if (socket != null) {
-            try {
-                socket.close()
-            } catch (e: Exception) {
-                Log.e(TAG, "Error closing VPN socket", e)
-            }
-            this.vpnSocket = null
-        }
+        closeVpnSocket()
         stopSelf(this.mStartID)
     }
 
-    @Subscribe(threadMode = ThreadMode.BACKGROUND)
-    fun onNetworkListRequest(requestNetworkListEvent: NetworkListRequestEvent) {
-        val node2 = this.node ?: return
-        val networks = node2.networkConfigs() ?: return
+    /**
+     * 刷新节点在线状态到 [VpnStateStore]。
+     *
+     * 线程：可在任意线程调用；节点未初始化时静默返回。
+     */
+    fun refreshNodeStatus() {
+        val node = this.node ?: return
+        store.setNodeStatus(NodeInfoMapper.toDto(node.status(), node.version))
+    }
+
+    /**
+     * 刷新已连接网络列表到 [VpnStateStore]。
+     *
+     * 线程：可在任意线程调用。
+     * 服务未运行或 `networkConfigs()` 为空时不更新，保持原“无应答则保留旧值”的行为。
+     */
+    fun refreshNetworkListState() {
+        val node = this.node ?: return
+        val networks = node.networkConfigs() ?: return
         if (networks.isEmpty()) {
             return
         }
-        this.eventBus.post(
-            NetworkListReplyEvent(VirtualNetworkConfigMapper.toDtoList(networks))
-        )
+        store.setConnectedNetworks(VirtualNetworkConfigMapper.toDtoList(networks))
     }
 
     /**
-     * 请求节点状态事件回调。
+     * 获取 Peer 列表。
      *
-     * @param event 事件；内部可直接传 `null` 以主动刷新状态
+     * 线程：可在任意线程调用。
+     *
+     * @return Peer 列表；节点未初始化时返回 `null`
      */
-    @Subscribe(threadMode = ThreadMode.BACKGROUND)
-    fun onNodeStatusRequest(event: NodeStatusRequestEvent?) {
-        // 返回节点状态
-        val node = this.node
-        if (node != null) {
-            this.eventBus.post(
-                NodeStatusEvent(NodeInfoMapper.toDto(node.status(), node.version))
-            )
-        }
+    fun getPeers(): List<PeerInfoDto>? {
+        val node = this.node ?: return null
+        return NodeInfoMapper.toDto(node.peers())
     }
 
     /**
-     * 请求 Peer 信息事件回调。
+     * 获取指定网络的实时配置 DTO。
+     *
+     * 线程：可在任意线程调用。
+     *
+     * @param networkId 网络 ID
+     * @return 配置 DTO；节点未初始化或网络无配置时返回 `null`
      */
-    @Subscribe(threadMode = ThreadMode.BACKGROUND)
-    fun onRequestPeerInfo(event: PeerInfoRequestEvent) {
-        val node = this.node
-        if (node == null) {
-            this.eventBus.post(PeerInfoReplyEvent(null))
-            return
-        }
-        this.eventBus.post(PeerInfoReplyEvent(NodeInfoMapper.toDto(node.peers())))
+    fun getVirtualNetworkConfigDto(networkId: Long): VirtualNetworkConfigDto? {
+        val node = this.node ?: return null
+        val config = node.networkConfig(networkId) ?: return null
+        return VirtualNetworkConfigMapper.toDto(config)
     }
 
     /**
-     * 请求网络配置事件回调。
+     * 用户修改网络配置后重配隧道。
+     *
+     * 线程：可在任意线程调用；重配任务在 [serviceScope] 上异步执行。
+     *
+     * @param networkId 网络 ID
      */
-    @Subscribe(threadMode = ThreadMode.BACKGROUND)
-    fun onVirtualNetworkConfigRequest(event: VirtualNetworkConfigRequestEvent) {
-        val node = this.node
-        if (node == null) {
-            this.eventBus.post(VirtualNetworkConfigReplyEvent(null))
+    fun reconfigureNetwork(networkId: Long) {
+        if (networkId != this.networkId) {
             return
         }
-        val config = node.networkConfig(event.networkId)
-        this.eventBus.post(
-            VirtualNetworkConfigReplyEvent(
-                if (config == null) null else VirtualNetworkConfigMapper.toDto(config)
-            )
-        )
-    }
-
-    @Subscribe(threadMode = ThreadMode.ASYNC)
-    fun onNetworkReconfigure(event: NetworkReconfigureEvent) {
-        val isChanged = event.isChanged
-        val network = event.network
-        val networkConfig = event.virtualNetworkConfig
-        val configUpdated = isChanged && updateTunnelConfig(network)
-        val networkIsOk = networkConfig.status == NetworkStatus.OK
-
-        if (configUpdated || !networkIsOk) {
-            this.eventBus.post(VirtualNetworkConfigChangedEvent(networkConfig))
-        }
-    }
-
-    @Subscribe(threadMode = ThreadMode.ASYNC)
-    fun onNetworkConfigChangedByUser(event: NetworkConfigChangedByUserEvent) {
-        if (event.networkId != this.networkId) {
-            return
-        }
-        val network = getNetworkRepository().getNetworkSummary(event.networkId)
+        val network = networkRepository.getNetworkSummary(networkId)
         if (network == null) {
-            Log.e(TAG, "Network not found: " + event.networkId)
+            Log.e(TAG, "Network not found: $networkId")
             return
         }
-        updateTunnelConfig(network)
+        serviceScope.launch { updateTunnelConfig(network) }
+    }
+
+    /**
+     * 入轨多个 Moon。
+     *
+     * 线程：可在任意线程调用；节点未初始化时静默返回。
+     *
+     * @param moons Moon 列表
+     */
+    fun orbitMoons(moons: List<MoonOrbitDto>) {
+        if (this.node == null) {
+            Log.e(TAG, "Can't orbit network if ZeroTier isn't running")
+            return
+        }
+        for (moonOrbit in moons) {
+            Log.i(TAG, "Orbiting moon: " + java.lang.Long.toHexString(moonOrbit.moonWorldId))
+            orbitNetwork(moonOrbit.moonWorldId, moonOrbit.moonSeed)
+        }
+    }
+
+    /**
+     * 当前网络入轨 Moon。
+     *
+     * @param moonWorldId Moon 节点地址
+     * @param moonSeed Moon 种子节点地址
+     */
+    fun orbitNetwork(moonWorldId: Long?, moonSeed: Long?) {
+        val node = this.node
+        if (node == null) {
+            Log.e(TAG, "Can't orbit network if ZeroTier isn't running")
+            return
+        }
+        // 入轨
+        val result = node.orbit(moonWorldId!!, moonSeed!!)
+        if (result != ResultCode.RESULT_OK) {
+            Log.e(
+                TAG,
+                "Failed to orbit " + java.lang.Long.toHexString(moonWorldId!!) + ": " + result
+            )
+        }
     }
 
     /**
@@ -627,10 +652,9 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
     override fun onEvent(event: Event) {
         Log.d(TAG, "Event: " + event.toString())
         // 更新节点状态
-        if (this.node!!.isInited()) {
-            this.eventBus.post(
-                NodeStatusEvent(NodeInfoMapper.toDto(this.node!!.status(), this.node!!.version))
-            )
+        val node = this.node ?: return
+        if (node.isInited()) {
+            store.setNodeStatus(NodeInfoMapper.toDto(node.status(), node.version))
         }
     }
 
@@ -640,6 +664,9 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
 
     /**
      * 当 ZT 网络配置发生更新。
+     *
+     * 数据库与实时配置在写锁内同步；隧道重配任务在锁释放后提交到 [serviceScope]，
+     * 避免在数据库锁内等待 TUN/UDP 线程。
      */
     override fun onNetworkConfigurationUpdated(
         networkId: Long,
@@ -647,10 +674,11 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
         config: VirtualNetworkConfig?
     ): Int {
         Log.i(TAG, "Virtual Network Config Operation: $op")
+        var reconfigure: ReconfigureRequest? = null
         DatabaseUtils.writeLock.lock()
         try {
             // 查找网络 ID 对应的配置
-            val network = getNetworkRepository().getNetworkSummary(networkId)
+            val network = networkRepository.getNetworkSummary(networkId)
                 ?: throw IllegalStateException("Database is inconsistent")
             // 根据当前网络状态确定更改配置的行为
             when (op) {
@@ -667,25 +695,40 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
                     Log.i(TAG, "Network Config Update!")
                     val cfg = config!!
                     val isChanged = setVirtualNetworkConfigAndUpdateDatabase(network, cfg)
-                    this.eventBus.post(
-                        NetworkReconfigureEvent(
-                            isChanged,
-                            network,
-                            VirtualNetworkConfigMapper.toDto(cfg)
-                        )
-                    )
+                    val dto = VirtualNetworkConfigMapper.toDto(cfg)
+                    store.setVirtualNetworkConfig(networkId, dto)
+                    reconfigure = ReconfigureRequest(isChanged, network, dto)
                 }
                 VirtualNetworkConfigOperation.VIRTUAL_NETWORK_CONFIG_OPERATION_DOWN,
                 VirtualNetworkConfigOperation.VIRTUAL_NETWORK_CONFIG_OPERATION_DESTROY -> {
                     Log.d(TAG, "Network Down!")
                     clearVirtualNetworkConfig(networkId)
+                    store.removeVirtualNetworkConfig(networkId)
                 }
                 else -> {
                 }
             }
-            return 0
         } finally {
             DatabaseUtils.writeLock.unlock()
+        }
+        reconfigure?.let { request ->
+            serviceScope.launch { applyReconfigure(request) }
+        }
+        return 0
+    }
+
+    /**
+     * 应用网络配置变更：必要时重配隧道，并按原条件发出状态提示。
+     *
+     * 运行在 [serviceScope] 上。
+     *
+     * @param request 配置变更请求
+     */
+    private fun applyReconfigure(request: ReconfigureRequest) {
+        val configUpdated = request.isChanged && updateTunnelConfig(request.network)
+        val networkIsOk = request.config.status == NetworkStatus.OK
+        if (configUpdated || !networkIsOk) {
+            store.emitStatusNotice(request.config)
         }
     }
 
@@ -702,7 +745,7 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
         setVirtualNetworkConfig(networkId, virtualNetworkConfig)
         val networkName = virtualNetworkConfig.name
         if (!networkName.isNullOrEmpty()) {
-            getNetworkRepository().updateNetworkName(networkId, networkName)
+            networkRepository.updateNetworkName(networkId, networkName)
         }
         return virtualNetworkConfig != virtualNetworkConfig2
     }
@@ -712,31 +755,62 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
      *
      * 供 UDP 通信失败等致命错误路径调用；可在任意线程调用。
      */
-    fun shutdown() {
+    override fun shutdown() {
         stopZeroTier()
-        val socket = this.vpnSocket
-        if (socket != null) {
-            try {
-                socket.close()
-            } catch (e: Exception) {
-                Log.e(TAG, "Error closing VPN socket", e)
-            }
-            this.vpnSocket = null
-        }
+        closeVpnSocket()
         stopSelf(this.mStartID)
     }
 
-    private fun updateTunnelConfig(network: NetworkSummary): Boolean {
-        val networkId = network.networkId
-        val networkConfig = getNetworkRepository().getNetworkConfig(networkId)
-        if (networkConfig == null) {
-            Log.e(TAG, "Network config not found: $networkId")
-            return false
+    /**
+     * 关闭 VPN socket。
+     */
+    private fun closeVpnSocket() {
+        val socket = this.vpnSocket ?: return
+        try {
+            socket.close()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error closing VPN socket", e)
         }
-        val virtualNetworkConfig = getVirtualNetworkConfig(networkId) ?: return false
-        val adapter = this.tunTapAdapter!!
+        this.vpnSocket = null
+    }
 
-        // 重启 TUN TAP
+    /**
+     * 启动失败时同步服务状态，避免 UI 停留在 `STARTING`。
+     */
+    private fun markServiceStopped() {
+        store.setServiceState(ServiceState.STOPPED)
+        store.setNodeStatus(null)
+        if (this.node == null) {
+            this.notificationController.cancel()
+        }
+    }
+
+    /**
+     * 应用指定网络的最新配置。
+     *
+     * @param network 数据库中的网络摘要
+     * @return 配置成功返回 `true`
+     */
+    private fun updateTunnelConfig(network: NetworkSummary): Boolean =
+        tunnelConfigurator.configure(network, this.disableIPv6)
+
+    override val vpnService: VpnService
+        get() = this
+
+    override val currentNode: Node?
+        get() = this.node
+
+    override val currentAdapter: TunTapAdapter?
+        get() = this.tunTapAdapter
+
+    override val vpnNotPreparedMessage: String
+        get() = getString(R.string.toast_vpn_application_not_prepared)
+
+    override fun readVirtualNetworkConfig(networkId: Long): VirtualNetworkConfig? =
+        getVirtualNetworkConfig(networkId)
+
+    override fun restartTunnelAdapter() {
+        val adapter = this.tunTapAdapter ?: return
         if (adapter.isRunning()) {
             adapter.interrupt()
             try {
@@ -744,212 +818,58 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
             } catch (ignored: InterruptedException) {
             }
         }
-        adapter.clearRouteMap()
+    }
 
-        // 重启 VPN Socket
-        if (this.vpnSocket != null) {
-            try {
-                this.vpnSocket!!.close()
-                this.input!!.close()
-                this.output!!.close()
-            } catch (e: Exception) {
-                Log.e(TAG, "Error closing VPN socket: $e", e)
-            }
-            this.vpnSocket = null
-            this.input = null
-            this.output = null
-        }
-
-        // 配置 VPN
-        Log.i(TAG, "Configuring VpnService.Builder")
-        val builder = Builder()
-        val assignedAddresses = virtualNetworkConfig.assignedAddresses
-        Log.i(TAG, "address length: " + assignedAddresses.size)
-        val isRouteViaZeroTier = networkConfig.isRouteViaZeroTier
-
-        // 遍历 ZT 网络中当前设备的 IP 地址，组播配置
-        for (vpnAddress in assignedAddresses) {
-            Log.d(
-                TAG,
-                "Adding VPN Address: " + vpnAddress.address +
-                    " Mac: " + SdkStringUtils.macAddressToString(virtualNetworkConfig.mac)
-            )
-            val rawAddress = vpnAddress.address.address
-
-            if (!this.disableIPv6 || vpnAddress.address !is Inet6Address) {
-                val address = vpnAddress.address
-                val port = vpnAddress.port
-                val route = InetAddressUtils.addressToRoute(address, port)
-                if (route == null) {
-                    Log.e(TAG, "NULL route calculated!")
-                    continue
-                }
-
-                // 计算 VPN 地址相关的组播 MAC 与 ADI
-                val multicastGroup: Long
-                val multicastAdi: Long
-                if (rawAddress.size == 4) {
-                    // IPv4
-                    multicastGroup = InetAddressUtils.BROADCAST_MAC_ADDRESS
-                    multicastAdi = ByteBuffer.wrap(rawAddress).int.toLong()
-                } else {
-                    // IPv6
-                    multicastGroup = ByteBuffer.wrap(
-                        byteArrayOf(
-                            0, 0, 0x33, 0x33, 0xFF.toByte(),
-                            rawAddress[13], rawAddress[14], rawAddress[15]
-                        )
-                    ).long
-                    multicastAdi = 0L
-                }
-
-                // 订阅组播并添加至 TUN TAP 路由
-                val result = this.node!!.multicastSubscribe(
-                    networkId, multicastGroup, multicastAdi
-                )
-                if (result != ResultCode.RESULT_OK) {
-                    Log.e(TAG, "Error joining multicast group")
-                } else {
-                    Log.d(TAG, "Joined multicast group")
-                }
-                builder.addAddress(address, port)
-                builder.addRoute(route, port)
-                adapter.addRouteAndNetwork(Route(route, port), networkId)
-            }
-        }
-
-        // 遍历网络的路由规则，将网络负责路由的地址路由至 VPN
-        try {
-            val v4Loopback = InetAddress.getByName("0.0.0.0")
-            val v6Loopback = InetAddress.getByName("::")
-            val routes = virtualNetworkConfig.routes
-            if (routes.isNotEmpty()) {
-                for (routeConfig in routes) {
-                    val target = routeConfig.target
-                    val via = routeConfig.via
-                    val targetAddress = target.address
-                    val targetPort = target.port
-                    val viaAddress = InetAddressUtils.addressToRoute(targetAddress, targetPort)
-
-                    val isIPv6Route =
-                        (targetAddress is Inet6Address) || (viaAddress is Inet6Address)
-                    val isDisabledV6Route = this.disableIPv6 && isIPv6Route
-                    val shouldRouteToZerotier = viaAddress != null && (
-                        isRouteViaZeroTier ||
-                            (viaAddress != v4Loopback && viaAddress != v6Loopback)
-                        )
-                    if (!isDisabledV6Route && shouldRouteToZerotier) {
-                        builder.addRoute(viaAddress!!, targetPort)
-                        val route = Route(viaAddress, targetPort)
-                        if (via != null) {
-                            route.gateway = via.address
-                        }
-                        adapter.addRouteAndNetwork(route, networkId)
-                    }
-                }
-            }
-            builder.addRoute(InetAddress.getByName("224.0.0.0"), 4)
-        } catch (e: Exception) {
-            this.eventBus.post(VPNErrorEvent(e.localizedMessage))
-            return false
-        }
-
-        if (Build.VERSION.SDK_INT >= 29) {
-            builder.setMetered(false)
-        }
-        DnsConfigurator.addDnsServers(
-            builder, networkConfig, virtualNetworkConfig, this.disableIPv6
-        )
-
-        // 配置 MTU
-        var mtu = virtualNetworkConfig.mtu
-        Log.i(TAG, "MTU from Network Config: $mtu")
-        if (mtu == 0) {
-            mtu = 2800
-        }
-        Log.i(TAG, "MTU Set: $mtu")
-        builder.setMtu(mtu)
-
-        builder.setSession(Constants.VPN_SESSION_NAME)
-
-        // 设置部分 APP 不经过 VPN
-        if (!isRouteViaZeroTier && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            for (app in DISALLOWED_APPS) {
-                try {
-                    builder.addDisallowedApplication(app)
-                } catch (e3: Exception) {
-                    Log.e(TAG, "Cannot disallow app", e3)
-                }
-            }
-        }
-
-        // 建立 VPN 连接
-        this.vpnSocket = builder.establish()
+    override fun closeVpnResources() {
         if (this.vpnSocket == null) {
-            this.eventBus.post(
-                VPNErrorEvent(getString(R.string.toast_vpn_application_not_prepared))
-            )
-            return false
+            return
         }
-        this.input = FileInputStream(this.vpnSocket!!.fileDescriptor)
-        this.output = FileOutputStream(this.vpnSocket!!.fileDescriptor)
-        adapter.setVpnSocket(this.vpnSocket)
-        adapter.setFileStreams(this.input!!, this.output!!)
+        try {
+            this.vpnSocket!!.close()
+            this.input!!.close()
+            this.output!!.close()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error closing VPN socket: $e", e)
+        }
+        this.vpnSocket = null
+        this.input = null
+        this.output = null
+    }
+
+    override fun onTunnelEstablished(
+        socket: ParcelFileDescriptor,
+        input: FileInputStream,
+        output: FileOutputStream
+    ) {
+        this.vpnSocket = socket
+        this.input = input
+        this.output = output
+        val adapter = this.tunTapAdapter ?: return
+        adapter.setVpnSocket(socket)
+        adapter.setFileStreams(input, output)
         adapter.startThreads()
-
-        // 状态栏提示
-        this.notificationController.showConnected(network.networkIdStr)
-        Log.i(TAG, "ZeroTier One Connected")
-
-        // 旧版本 Android 多播处理
-        if (Build.VERSION.SDK_INT < 29) {
-            val v4 = this.v4MulticastScanner
-            if (v4 != null && !v4.isAlive) {
-                v4.start()
-            }
-            val v6 = this.v6MulticastScanner
-            if (!this.disableIPv6 && v6 != null && !v6.isAlive) {
-                v6.start()
-            }
-        }
-        return true
     }
 
-    /**
-     * 入轨事件。
-     */
-    @Subscribe
-    fun onOrbitMoonEvent(event: OrbitMoonEvent) {
-        if (this.node == null) {
-            Log.e(TAG, "Can't orbit network if ZeroTier isn't running")
+    override fun showConnectedNotification(networkIdStr: String?) {
+        this.notificationController.showConnected(networkIdStr)
+    }
+
+    override fun startMulticastScanners(disableIpv6: Boolean) {
+        if (Build.VERSION.SDK_INT >= 29) {
             return
         }
-        // 入轨
-        for (moonOrbit in event.moonOrbits) {
-            Log.i(TAG, "Orbiting moon: " + java.lang.Long.toHexString(moonOrbit.moonWorldId))
-            this.orbitNetwork(moonOrbit.moonWorldId, moonOrbit.moonSeed)
+        val v4 = this.v4MulticastScanner
+        if (v4 != null && !v4.isAlive) {
+            v4.start()
+        }
+        val v6 = this.v6MulticastScanner
+        if (!disableIpv6 && v6 != null && !v6.isAlive) {
+            v6.start()
         }
     }
 
-    /**
-     * 当前网络入轨 Moon。
-     *
-     * @param moonWorldId Moon 节点地址
-     * @param moonSeed Moon 种子节点地址
-     */
-    fun orbitNetwork(moonWorldId: Long?, moonSeed: Long?) {
-        if (this.node == null) {
-            Log.e(TAG, "Can't orbit network if ZeroTier isn't running")
-            return
-        }
-        // 入轨
-        val result = this.node!!.orbit(moonWorldId!!, moonSeed!!)
-        if (result != ResultCode.RESULT_OK) {
-            Log.e(
-                TAG,
-                "Failed to orbit " + java.lang.Long.toHexString(moonWorldId!!) + ": " + result
-            )
-        }
+    override fun emitTunnelError(message: String) {
+        store.emitError(message)
     }
 
     inner class ZeroTierBinder : Binder() {
@@ -957,13 +877,25 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
         fun getService(): ZeroTierOneService = this@ZeroTierOneService
     }
 
+    /**
+     * 网络配置变更后的重配请求。
+     *
+     * @property isChanged 配置内容是否发生变化
+     * @property network 数据库中的网络摘要
+     * @property config 变化后的实时配置
+     */
+    private data class ReconfigureRequest(
+        val isChanged: Boolean,
+        val network: NetworkSummary,
+        val config: VirtualNetworkConfigDto
+    )
+
     companion object {
         const val MSG_JOIN_NETWORK = 1
         const val MSG_LEAVE_NETWORK = 2
         const val ZT1_NETWORK_ID = "com.zerotier.one.network_id"
         const val ZT1_USE_DEFAULT_ROUTE = "com.zerotier.one.use_default_route"
 
-        private val DISALLOWED_APPS = arrayOf("com.android.vending")
         private const val TAG = "ZT1_Service"
     }
 }
