@@ -51,7 +51,9 @@ class NetworkRepositoryImpl(private val database: AppDatabase) : NetworkReposito
             val config = network.networkConfig!!
             val dnsServers = ArrayList<String>()
             for (server in database.dnsServerDao().findByNetworkId(networkId)) {
-                dnsServers.add(server.nameserver!!)
+                // 数据库列允许 null；原 Java 实现会原样加入列表，这里保持相同行为
+                @Suppress("UNCHECKED_CAST")
+                (dnsServers as MutableList<String?>).add(server.nameserver)
             }
             return NetworkConfigDto(
                 config.routeViaZeroTier,
