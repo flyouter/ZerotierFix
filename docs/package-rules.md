@@ -108,8 +108,8 @@
 
 ### 2.6 待完成
 
-1. **运行期验证**：VPN 启停、TUN 数据面、ARP/NDP、EventBus 线程调度、通知、开机广播，以及旧版本覆盖安装的数据库兼容性需在真机/模拟器验证。
-2. **继续瘦身 `ZeroTierOneService`**：当前 969 行；可继续评估抽 `TunnelConfigurator`；保持现有事务/线程边界。
-3. **补齐 `vpn` 内部类的方法 KDoc**。
-4. **补测试**：优先覆盖 `util`（地址/路由/IP 包）、ARP/NDP、Repository。
-5. **UI 迁移（可选）**：`features/**`、`ui/**` 仍为 Java；迁移时必须保持现有 Java 互操作约束。
+1. **运行期验证**：VPN 启停、TUN 数据面、ARP/NDP、EventBus 线程调度、通知、开机广播，以及旧版本覆盖安装的数据库兼容性，均待真机/模拟器验证。
+2. **继续瘦身 `ZeroTierOneService`**：当前 969 行；`TunnelConfigurator` 是候选拆分点，拆分保持现有事务/线程边界。
+3. **`vpn` 内部类的方法 KDoc** 仍有缺口。
+4. **测试**：优先覆盖 `util`（地址/路由/IP 包）、ARP/NDP、Repository。
+5. **UI 迁移（可选）**：`features/**`、`ui/**` 仍为 Java；迁移保持现有 Java 互操作约束。
