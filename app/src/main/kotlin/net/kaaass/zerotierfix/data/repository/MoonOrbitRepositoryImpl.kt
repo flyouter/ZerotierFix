@@ -9,12 +9,18 @@ import net.kaaass.zerotierfix.model.dto.MoonOrbitDto
 
 import java.io.File
 
+import dagger.hilt.android.qualifiers.ApplicationContext
+
+import javax.inject.Inject
+import javax.inject.Singleton
+
 /**
  * [MoonOrbitRepository] 的 Room 实现。
  */
-class MoonOrbitRepositoryImpl(
+@Singleton
+class MoonOrbitRepositoryImpl @Inject constructor(
     private val database: AppDatabase,
-    context: Context
+    @ApplicationContext context: Context
 ) : MoonOrbitRepository {
 
     private val context: Context = context.applicationContext

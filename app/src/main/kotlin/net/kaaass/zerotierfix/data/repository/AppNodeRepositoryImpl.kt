@@ -4,10 +4,16 @@ import net.kaaass.zerotierfix.data.database.AppDatabase
 import net.kaaass.zerotierfix.data.database.DatabaseUtils
 import net.kaaass.zerotierfix.data.database.entity.AppNode
 
+import javax.inject.Inject
+import javax.inject.Singleton
+
 /**
  * [AppNodeRepository] 的 Room 实现。
  */
-class AppNodeRepositoryImpl(private val database: AppDatabase) : AppNodeRepository {
+@Singleton
+class AppNodeRepositoryImpl @Inject constructor(
+    private val database: AppDatabase
+) : AppNodeRepository {
 
     override fun getNodeIdStr(): String? {
         DatabaseUtils.readLock.lock()

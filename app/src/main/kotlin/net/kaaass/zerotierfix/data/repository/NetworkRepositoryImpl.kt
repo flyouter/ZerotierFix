@@ -12,10 +12,16 @@ import net.kaaass.zerotierfix.model.dto.NetworkConfigDto
 import net.kaaass.zerotierfix.model.dto.NetworkSummary
 import net.kaaass.zerotierfix.model.enums.DNSMode
 
+import javax.inject.Inject
+import javax.inject.Singleton
+
 /**
  * [NetworkRepository] 的 Room 实现。
  */
-class NetworkRepositoryImpl(private val database: AppDatabase) : NetworkRepository {
+@Singleton
+class NetworkRepositoryImpl @Inject constructor(
+    private val database: AppDatabase
+) : NetworkRepository {
 
     override fun getAllNetworks(): List<NetworkSummary> {
         DatabaseUtils.readLock.lock()
