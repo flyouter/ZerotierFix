@@ -3,8 +3,8 @@
 > 规范正文已迁移到 [`.claude/rules/`](../.claude/rules/)，Claude Code 会自动加载。
 > 本文件只保留设计背景与迁移历史，不再作为规则来源。
 
-- **状态**：v3（2026-10-23，feature-first 单模块结构）
-- **适用范围**：`app/src/main/java/net/kaaass/zerotierfix`、`core` 模块，以及后续新增模块
+- **状态**：v4（2026-10-23，非 UI Kotlin 化完成）
+- **适用范围**：`app/src/main/kotlin/net/kaaass/zerotierfix`（非 UI）、`app/src/main/java/net/kaaass/zerotierfix`（UI）、`core` 模块，以及后续新增模块
 
 ---
 
@@ -90,8 +90,26 @@
 | Schema | 导出 schema 移到 `app/schemas/net.kaaass.zerotierfix.data.database.AppDatabase/` |
 | 业务代码 | UI、Service、事件、DTO 保持本次重构结果；dev 的 Room 适配改动由 Repository 替代 |
 
-### 2.5 待完成
+### 2.5 Kotlin 迁移（2026-10-23）
 
-1. **继续瘦身 `ZeroTierOneService`**：可抽 `TunnelConfigurator`、多播扫描线程；保持现有事务/线程边界。
-2. **补齐 `vpn` 内部类的方法 Javadoc**。
-3. **补测试**：优先覆盖 `util`（地址/路由/IP 包）、ARP/NDP、Repository。
+在保持业务逻辑、线程模型、锁/事务边界和 Room schema 不变的前提下，将全部非 UI 代码改写为 Kotlin。
+
+| 项 | 结果 |
+|---|---|
+| 工具链 | 启用 AGP 9.4.1 内置 Kotlin（KGP 2.2.10），未引入 `kotlin-android` / `kapt`；Room 编译器由 `annotationProcessor` 迁至 KSP `2.2.10-2.0.2`；新增 `android.disallowKotlinSourceSets=false` 以兼容 KSP 的 source set 注入 |
+| 源集 | 非 UI Kotlin 位于 `app/src/main/kotlin`；UI（`features/**`、`ui/**`）继续留在 `app/src/main/java` |
+| 迁移范围 | `model`、`events`、`util`、`data`、`vpn`、`service`、`di`、`ZerotierFixApplication`，共 77 个有代码文件 |
+| Java 互操作 | 工具类用 `object` + `@JvmStatic`；常量用 `const val`；DTO/事件布尔属性命名为 `isXxx`；`AppDatabase.getInstance`、`ZeroTierOneService.ZT1_NETWORK_ID`、`ZeroTierBinder` 等 Java 调用形态保持不变 |
+| Room | 实体保留字段名、可空性与无参构造器；DAO 单条查询返回可空类型；`app/schemas/.../24.json` 零变更，`identityHash` 仍为 `5147b0c3923106a52f5d8395e56a2c8a` |
+| 锁与事务 | Repository 的 `lock()` / `try` / `finally`、事务边界、`runInTransaction` 提前返回语义逐字保留 |
+| Service | `ZeroTierOneService` 直接迁移后为 1099 行，超过 1000 行硬上限；将两个组播扫描线程等价抽到 `service/MulticastScanner.kt`，服务降至 969 行 |
+| 提交划分 | 5 个阶段提交：model/events → util → data+KSP → vpn → service/di/Application，每个提交均可独立构建 |
+| 遗留 Java | 仅 `features/**`、`ui/**` 共 20 个 UI 文件与 4 个 `package-info.java` |
+
+### 2.6 待完成
+
+1. **运行期验证**：VPN 启停、TUN 数据面、ARP/NDP、EventBus 线程调度、通知、开机广播，以及旧版本覆盖安装的数据库兼容性需在真机/模拟器验证。
+2. **继续瘦身 `ZeroTierOneService`**：当前 969 行；可继续评估抽 `TunnelConfigurator`；保持现有事务/线程边界。
+3. **补齐 `vpn` 内部类的方法 KDoc**。
+4. **补测试**：优先覆盖 `util`（地址/路由/IP 包）、ARP/NDP、Repository。
+5. **UI 迁移（可选）**：`features/**`、`ui/**` 仍为 Java；迁移时必须保持现有 Java 互操作约束。
