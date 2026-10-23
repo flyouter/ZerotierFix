@@ -54,7 +54,7 @@ class NDPTable {
     /**
      * 停止超时清理线程。
      */
-    internal fun stop() {
+    fun stop() {
         try {
             this.timeoutThread.interrupt()
             this.timeoutThread.join()
@@ -68,7 +68,7 @@ class NDPTable {
      * @param inetAddress IPv6 地址
      * @param mac MAC 地址
      */
-    internal fun setAddress(inetAddress: InetAddress, mac: Long) {
+    fun setAddress(inetAddress: InetAddress, mac: Long) {
         synchronized(this.inetAddressToMacAddress) {
             this.inetAddressToMacAddress[inetAddress] = mac
         }
@@ -90,7 +90,7 @@ class NDPTable {
      * @param inetAddress IPv6 地址
      * @return 存在返回 `true`
      */
-    internal fun hasMacForAddress(inetAddress: InetAddress): Boolean =
+    fun hasMacForAddress(inetAddress: InetAddress): Boolean =
         synchronized(this.inetAddressToMacAddress) {
             this.inetAddressToMacAddress.containsKey(inetAddress)
         }
@@ -101,7 +101,7 @@ class NDPTable {
      * @param mac MAC 地址
      * @return 存在返回 `true`
      */
-    internal fun hasAddressForMac(mac: Long): Boolean =
+    fun hasAddressForMac(mac: Long): Boolean =
         synchronized(this.macAddressToInetAddress) {
             this.macAddressToInetAddress.containsKey(mac)
         }
@@ -112,7 +112,7 @@ class NDPTable {
      * @param inetAddress IPv6 地址
      * @return MAC 地址；不存在时返回 -1
      */
-    internal fun getMacForAddress(inetAddress: InetAddress): Long {
+    fun getMacForAddress(inetAddress: InetAddress): Long {
         synchronized(this.inetAddressToMacAddress) {
             if (!this.inetAddressToMacAddress.containsKey(inetAddress)) {
                 return -1
@@ -129,7 +129,7 @@ class NDPTable {
      * @param mac MAC 地址
      * @return IPv6 地址；不存在时返回 `null`
      */
-    internal fun getAddressForMac(mac: Long): InetAddress? {
+    fun getAddressForMac(mac: Long): InetAddress? {
         synchronized(this.macAddressToInetAddress) {
             if (!this.macAddressToInetAddress.containsKey(mac)) {
                 return null
@@ -160,7 +160,7 @@ class NDPTable {
      * @param mac 源 MAC
      * @return NS 报文
      */
-    internal fun getNeighborSolicitationPacket(
+    fun getNeighborSolicitationPacket(
         inetAddress: InetAddress,
         inetAddress2: InetAddress,
         mac: Long

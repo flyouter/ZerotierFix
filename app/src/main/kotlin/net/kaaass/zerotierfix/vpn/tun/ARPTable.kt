@@ -70,7 +70,7 @@ class ARPTable {
      * @param inetAddress IPv4 地址
      * @param mac MAC 地址
      */
-    internal fun setAddress(inetAddress: InetAddress, mac: Long) {
+    fun setAddress(inetAddress: InetAddress, mac: Long) {
         synchronized(this.inetAddressToMacAddress) {
             this.inetAddressToMacAddress[inetAddress] = mac
         }
@@ -104,7 +104,7 @@ class ARPTable {
      * @param inetAddress IPv4 地址
      * @return MAC 地址；不存在时返回 -1
      */
-    internal fun getMacForAddress(inetAddress: InetAddress): Long {
+    fun getMacForAddress(inetAddress: InetAddress): Long {
         synchronized(this.inetAddressToMacAddress) {
             if (!this.inetAddressToMacAddress.containsKey(inetAddress)) {
                 return -1
@@ -125,7 +125,7 @@ class ARPTable {
      * @param mac MAC 地址
      * @return IPv4 地址；不存在时返回 `null`
      */
-    internal fun getAddressForMac(mac: Long): InetAddress? {
+    fun getAddressForMac(mac: Long): InetAddress? {
         synchronized(this.macAddressToInetAdddress) {
             if (!this.macAddressToInetAdddress.containsKey(mac)) {
                 return null
