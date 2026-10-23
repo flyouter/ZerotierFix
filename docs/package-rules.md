@@ -104,7 +104,7 @@
 | 锁与事务 | Repository 的 `lock()` / `try` / `finally`、事务边界、`runInTransaction` 提前返回语义逐字保留 |
 | Service | `ZeroTierOneService` 直接迁移后为 1099 行，超过 1000 行硬上限；将两个组播扫描线程等价抽到 `service/MulticastScanner.kt`，服务降至 969 行 |
 | 提交划分 | 5 个阶段提交：model/events → util → data+KSP → vpn → service/di/Application，每个提交均可独立构建 |
-| 遗留 Java | 仅 `features/**`、`ui/**` 共 20 个 UI 文件与 4 个 `package-info.java` |
+| 遗留 Java | 仅 `features/**`、`ui/**` 共 19 个 UI 文件与 5 个 `package-info.java` |
 
 ### 2.6 待完成
 
