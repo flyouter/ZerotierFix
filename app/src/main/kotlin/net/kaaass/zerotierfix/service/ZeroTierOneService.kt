@@ -934,8 +934,8 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
     /**
      * 进入前台服务：通知由系统托管，服务/进程结束时自动移除。
      *
-     * 先构建通知再尝试 `startForeground`；个别 ROM 可能因前台服务类型
-     * 校验失败，此时降级为普通常驻通知，不影响连接本身。
+     * 先构建通知再尝试 `startForeground`；失败时只记录日志，不退回
+     * 普通通知 —— 普通通知无法随服务/进程结束被系统移除，正是本次要修掉的问题。
      *
      * @param networkIdStr 网络 ID 的字符串形式
      */
@@ -953,9 +953,8 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
             }
             this.foregroundStarted = true
         } catch (e: Exception) {
-            Log.w(TAG, "startForeground failed; falling back to normal notification", e)
+            Log.e(TAG, "startForeground failed", e)
             this.foregroundStarted = false
-            notificationController.notifyConnected(networkIdStr)
         }
     }
 

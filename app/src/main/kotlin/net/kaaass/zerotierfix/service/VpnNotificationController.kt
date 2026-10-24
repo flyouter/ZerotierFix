@@ -55,17 +55,6 @@ class VpnNotificationController(private val service: VpnService) {
     }
 
     /**
-     * 以普通通知形式显示已连接状态。
-     *
-     * 仅用于 `startForeground` 失败时的降级路径。
-     *
-     * @param networkIdStr 网络 ID 的字符串形式；可能为 `null`
-     */
-    fun notifyConnected(networkIdStr: String?) {
-        getNotificationManager().notify(NOTIFICATION_ID, buildConnected(networkIdStr))
-    }
-
-    /**
      * 取消已显示的通知。
      *
      * 每次都重新获取 [NotificationManager]，不依赖任何缓存字段，
