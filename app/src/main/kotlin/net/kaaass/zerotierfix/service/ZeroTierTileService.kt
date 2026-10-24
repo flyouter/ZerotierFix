@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.content.Intent
 import android.graphics.drawable.Icon
+import android.net.VpnService
 import android.os.Build
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
@@ -99,11 +100,35 @@ class ZeroTierTileService : TileService() {
             toast(R.string.quick_tile_toast_no_network)
             return
         }
-        if (isLocked) {
+        if (VpnService.prepare(this) == null) {
+            // 已授权：普通 startActivity 让透明页留在通知栏后面完成服务启动，
+            // 磁贴面板保持展开；startActivityAndCollapse 会收起面板并跳到桌面。
+            launchConnectActivity(targetNetworkId)
+        } else if (isLocked) {
             unlockAndRun { launchConsentActivity(targetNetworkId) }
         } else {
             launchConsentActivity(targetNetworkId)
         }
+    }
+
+    /**
+     * 在通知栏后面启动透明连接页，不收起快捷设置面板。
+     *
+     * 普通 `startActivity` 依赖 SystemUI 绑定 TileService 时授予的后台 Activity
+     * 启动豁免；Android 14+ 收紧了该限制，只能回退到系统提供的
+     * `startActivityAndCollapse`（面板会被收起）。
+     */
+    private fun launchConnectActivity(networkId: Long) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            launchConsentActivity(networkId)
+            return
+        }
+        startActivity(
+            Intent(this, VpnConsentActivity::class.java).apply {
+                putExtra(VpnConsentActivity.EXTRA_NETWORK_ID, networkId)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+        )
     }
 
     /**
