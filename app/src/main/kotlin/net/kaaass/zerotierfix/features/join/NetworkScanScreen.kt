@@ -2,6 +2,7 @@ package net.kaaass.zerotierfix.features.join
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -143,7 +144,12 @@ fun NetworkScanScreen(
                             textAlign = TextAlign.Center,
                             modifier = Modifier
                                 .align(Alignment.BottomCenter)
-                                .padding(horizontal = 32.dp, vertical = 48.dp)
+                                .padding(horizontal = 32.dp, vertical = 24.dp)
+                                .background(
+                                    color = Color.Black.copy(alpha = HINT_SCRIM_ALPHA),
+                                    shape = RoundedCornerShape(16.dp)
+                                )
+                                .padding(horizontal = 16.dp, vertical = 8.dp)
                         )
                     }
                 }
@@ -236,7 +242,7 @@ private fun CameraErrorState(
 @Composable
 private fun ScanOverlay(modifier: Modifier = Modifier) {
     Canvas(modifier = modifier) {
-        val side = min(size.width, size.height) * FRAME_SIZE_RATIO
+        val side = min(size.width * FRAME_WIDTH_RATIO, size.height * FRAME_HEIGHT_RATIO)
         val left = (size.width - side) / 2f
         val top = (size.height - side) / 2f
         val right = left + side
@@ -287,8 +293,11 @@ private fun ScanOverlay(modifier: Modifier = Modifier) {
     }
 }
 
-/** 取景区边长占短边的比例。 */
-private const val FRAME_SIZE_RATIO = 0.68f
+/** 取景区边长占可用宽度的比例。 */
+private const val FRAME_WIDTH_RATIO = 0.72f
+
+/** 取景区边长占可用高度的比例，横屏时避免压住底部提示。 */
+private const val FRAME_HEIGHT_RATIO = 0.5f
 
 /** 遮罩透明度。 */
 private const val MASK_ALPHA = 0.55f
@@ -298,6 +307,9 @@ private const val CORNER_RATIO = 0.14f
 
 /** 角标线宽。 */
 private const val CORNER_STROKE_DP = 4
+
+/** 底部提示底衬透明度。 */
+private const val HINT_SCRIM_ALPHA = 0.55f
 
 @Preview(showBackground = true)
 @Composable
