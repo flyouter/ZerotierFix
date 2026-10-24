@@ -1,5 +1,7 @@
 package net.kaaass.zerotierfix.service
 
+import android.app.PendingIntent
+import android.content.Intent
 import android.graphics.drawable.Icon
 import android.net.VpnService
 import android.os.Build
@@ -96,9 +98,33 @@ class ZeroTierTileService : TileService() {
         }
         if (VpnService.prepare(this) == null) {
             controller.connect(targetNetworkId)
+        } else if (isLocked) {
+            unlockAndRun { launchConsentActivity(targetNetworkId) }
         } else {
-            // 未授权路径：透明授权页在后续步骤接入。
-            toast(R.string.toast_vpn_permission_denied)
+            launchConsentActivity(targetNetworkId)
+        }
+    }
+
+    /**
+     * 启动透明授权页，完成系统 VPN 授权后自动连接。
+     */
+    private fun launchConsentActivity(networkId: Long) {
+        val intent = Intent(this, VpnConsentActivity::class.java).apply {
+            putExtra(VpnConsentActivity.EXTRA_NETWORK_ID, networkId)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            // API 34 起 Intent 重载已废弃且对 targetSdk 34+ 会抛异常。
+            val pendingIntent = PendingIntent.getActivity(
+                this,
+                networkId.hashCode(),
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            startActivityAndCollapse(pendingIntent)
+        } else {
+            @Suppress("DEPRECATION")
+            startActivityAndCollapse(intent)
         }
     }
 
