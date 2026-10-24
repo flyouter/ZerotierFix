@@ -99,8 +99,11 @@ class SettingsViewModel @Inject constructor(
                 UiText.Resource(R.string.settings_file_pick_cancelled)
             )
         )
-        if (!customPlanetFileExists() && settingsRepository.isPlanetUseCustom) {
-            settingsRepository.setPlanetUseCustom(false)
+        viewModelScope.launch {
+            val exists = withContext(ioDispatcher) { customPlanetFileExists() }
+            if (!exists && settingsRepository.settings.value.isPlanetUseCustom) {
+                settingsRepository.setPlanetUseCustom(false)
+            }
         }
     }
 
@@ -120,8 +123,14 @@ class SettingsViewModel @Inject constructor(
      */
     fun setPlanetUseCustom(enabled: Boolean) {
         settingsRepository.setPlanetUseCustom(enabled)
-        if (enabled && !customPlanetFileExists()) {
-            _uiState.update { it.copy(isPlanetDialogVisible = true) }
+        if (!enabled) {
+            return
+        }
+        viewModelScope.launch {
+            val exists = withContext(ioDispatcher) { customPlanetFileExists() }
+            if (!exists) {
+                _uiState.update { it.copy(isPlanetDialogVisible = true) }
+            }
         }
     }
 
@@ -139,8 +148,11 @@ class SettingsViewModel @Inject constructor(
      */
     fun dismissPlanetDialog() {
         _uiState.update { it.copy(isPlanetDialogVisible = false, isUrlDialogVisible = false) }
-        if (!customPlanetFileExists()) {
-            settingsRepository.setPlanetUseCustom(false)
+        viewModelScope.launch {
+            val exists = withContext(ioDispatcher) { customPlanetFileExists() }
+            if (!exists) {
+                settingsRepository.setPlanetUseCustom(false)
+            }
         }
     }
 
@@ -160,8 +172,11 @@ class SettingsViewModel @Inject constructor(
      */
     fun dismissUrlDialog() {
         _uiState.update { it.copy(isUrlDialogVisible = false) }
-        if (!customPlanetFileExists() && settingsRepository.isPlanetUseCustom) {
-            settingsRepository.setPlanetUseCustom(false)
+        viewModelScope.launch {
+            val exists = withContext(ioDispatcher) { customPlanetFileExists() }
+            if (!exists && settingsRepository.settings.value.isPlanetUseCustom) {
+                settingsRepository.setPlanetUseCustom(false)
+            }
         }
     }
 
@@ -311,7 +326,10 @@ class SettingsViewModel @Inject constructor(
      * 刷新自定义 planet 文件是否存在。
      */
     private fun refreshPlanetFileState() {
-        _uiState.update { it.copy(hasCustomPlanetFile = customPlanetFileExists()) }
+        viewModelScope.launch {
+            val exists = withContext(ioDispatcher) { customPlanetFileExists() }
+            _uiState.update { it.copy(hasCustomPlanetFile = exists) }
+        }
     }
 
     /**
