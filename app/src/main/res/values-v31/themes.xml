@@ -1,0 +1,7 @@
+<resources>
+    <!-- Android 12+ 会给 Activity 添加启动画面；透明授权页不需要背景与图标。 -->
+    <style name="Theme.ZerotierFix.Transparent" parent="Theme.ZerotierFix.Transparent.Base">
+        <item name="android:windowSplashScreenBackground">@android:color/transparent</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@android:color/transparent</item>
+    </style>
+</resources>

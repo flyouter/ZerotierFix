@@ -256,4 +256,15 @@
     <string name="scan_image_no_qr">No QR code found in this image.</string>
     <string name="scan_image_decode_failed">Couldn\'t read this image. Try another one.</string>
     <string name="scan_image_picker_unavailable">Couldn\'t open the image picker.</string>
+
+    <!-- 快捷设置磁贴 -->
+    <string name="quick_tile_label">ZeroTier</string>
+    <string name="quick_tile_subtitle_connected">Connected</string>
+    <string name="quick_tile_subtitle_disconnected">Not connected</string>
+    <string name="quick_tile_subtitle_connecting">Connecting…</string>
+    <string name="quick_tile_subtitle_no_network">Add a network first</string>
+    <string name="quick_tile_toast_no_network">Add a network in ZeroTier Fix first.</string>
+    <string name="quick_tile_toast_loading">Loading networks…</string>
+    <string name="quick_tile_toast_network_missing">That network no longer exists.</string>
+    <string name="quick_tile_content_description">ZeroTier, %1$s</string>
 </resources>
