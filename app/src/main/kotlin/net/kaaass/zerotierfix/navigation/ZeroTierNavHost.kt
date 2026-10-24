@@ -32,6 +32,7 @@ import androidx.navigation.navArgument
 
 import net.kaaass.zerotierfix.features.detail.NetworkDetailRoute
 import net.kaaass.zerotierfix.features.join.JoinNetworkRoute
+import net.kaaass.zerotierfix.features.join.NetworkScanRoute
 import net.kaaass.zerotierfix.features.moon.MoonOrbitRoute
 import net.kaaass.zerotierfix.features.networklist.NetworkListRoute
 import net.kaaass.zerotierfix.features.peer.PeerListRoute
@@ -146,6 +147,22 @@ fun ZeroTierNavHost(navController: NavHostController = rememberNavController()) 
                         }
                         composable(ZeroTierRoutes.JOIN) {
                             JoinNetworkRoute(onBack = { navController.popBackStack() })
+                        }
+                        composable(
+                            route = ZeroTierRoutes.SCAN,
+                            enterTransition = { fadeIn(tween(150)) },
+                            popExitTransition = { fadeOut(tween(150)) }
+                        ) {
+                            NetworkScanRoute(
+                                onBack = { navController.popBackStack() },
+                                onScanned = { networkId ->
+                                    navController.previousBackStackEntry
+                                        ?.takeIf { it.destination.route == ZeroTierRoutes.JOIN }
+                                        ?.savedStateHandle
+                                        ?.set(ZeroTierRoutes.SCAN_RESULT_KEY, networkId)
+                                    navController.popBackStack()
+                                }
+                            )
                         }
                         composable(
                             route = ZeroTierRoutes.DETAIL,

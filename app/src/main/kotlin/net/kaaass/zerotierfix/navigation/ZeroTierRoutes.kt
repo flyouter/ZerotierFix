@@ -11,6 +11,12 @@ object ZeroTierRoutes {
     /** 添加网络页。 */
     const val JOIN = "join"
 
+    /** 扫码添加网络页。 */
+    const val SCAN = "scan"
+
+    /** 扫码结果在添加网络页 SavedStateHandle 中的键。 */
+    const val SCAN_RESULT_KEY = "scan_result_network_id"
+
     /** 网络详情页。 */
     const val DETAIL = "detail/{networkId}"
 

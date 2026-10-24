@@ -237,4 +237,20 @@
     <string name="settings_planet_file_missing">No planet file selected</string>
     <string name="settings_file_pick_cancelled">File selection cancelled.</string>
     <string name="settings_app_version">App version</string>
+
+    <string name="scan_network_title">Scan network QR code</string>
+    <string name="cd_scan_network_id">Scan network ID QR code</string>
+    <string name="scan_hint">Align the QR code inside the frame</string>
+    <string name="cd_toggle_torch">Toggle flashlight</string>
+    <string name="scan_permission_title">Camera permission required</string>
+    <string name="scan_permission_rationale">Camera access is required to scan a network QR code.</string>
+    <string name="scan_permission_denied">Camera permission was denied. Enable it in system settings, then return to this screen.</string>
+    <string name="scan_permission_continue">Continue</string>
+    <string name="scan_permission_grant">Grant permission</string>
+    <string name="scan_open_settings">Open settings</string>
+    <string name="scan_camera_unavailable">This device has no usable camera.</string>
+    <string name="scan_camera_error">Failed to start the camera. Please go back and try again.</string>
+    <string name="scan_invalid_qr">This QR code is not a supported network invite code.</string>
+    <string name="scan_invalid_network_id">The QR code does not contain a valid 16-character network ID.</string>
+    <string name="scan_result_applied">Network ID filled in. Review it and tap Add Network.</string>
 </resources>
