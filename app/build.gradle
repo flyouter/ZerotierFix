@@ -65,6 +65,12 @@ hilt {
     enableAggregatingTask = false
 }
 
+// 仅生成编译期报告，不进入 APK、不产生运行时开销
+composeCompiler {
+    reportsDestination = layout.buildDirectory.dir("compose_reports")
+    metricsDestination = layout.buildDirectory.dir("compose_metrics")
+}
+
 dependencies {
     implementation project(':core')
 
