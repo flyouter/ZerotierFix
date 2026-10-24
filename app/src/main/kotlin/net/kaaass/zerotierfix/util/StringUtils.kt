@@ -96,4 +96,21 @@ object StringUtils {
 
         return "$ipString:$port"
     }
+
+    /**
+     * 将套接字地址格式化为 `地址/前缀`，用于展示 ZeroTier 分配的 IP。
+     *
+     * @param address 套接字地址；`port` 字段承载前缀位数
+     * @param disableIpv6 是否过滤 IPv6 地址
+     * @return 格式化结果；地址不可用或被过滤时返回 `null`
+     */
+    @JvmStatic
+    fun formatAddressWithPrefix(address: InetSocketAddress, disableIpv6: Boolean): String? {
+        val inetAddress = address.address ?: return null
+        if (disableIpv6 && inetAddress is Inet6Address) {
+            return null
+        }
+        val host = inetAddress.hostAddress ?: return null
+        return "$host/${address.port}"
+    }
 }
