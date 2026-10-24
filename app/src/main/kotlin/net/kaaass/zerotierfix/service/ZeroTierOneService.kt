@@ -924,11 +924,11 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
         adapter.startThreads()
     }
 
-    override fun showConnectedNotification(networkIdStr: String?) {
+    override fun showConnectedNotification(networkIdStr: String?, networkName: String?) {
         if (this.stopping) {
             return
         }
-        enterForeground(networkIdStr)
+        enterForeground(networkIdStr, networkName)
     }
 
     /**
@@ -938,9 +938,10 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
      * 普通通知 —— 普通通知无法随服务/进程结束被系统移除，正是本次要修掉的问题。
      *
      * @param networkIdStr 网络 ID 的字符串形式
+     * @param networkName 网络名称；可能为 `null`
      */
-    private fun enterForeground(networkIdStr: String?) {
-        val notification = notificationController.buildConnected(networkIdStr)
+    private fun enterForeground(networkIdStr: String?, networkName: String?) {
+        val notification = notificationController.buildConnected(networkIdStr, networkName)
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                 startForeground(

@@ -80,8 +80,9 @@ interface TunnelHost {
      * 显示已连接通知。
      *
      * @param networkIdStr 当前网络的 16 进制字符串
+     * @param networkName 当前网络名称；可能为 `null`
      */
-    fun showConnectedNotification(networkIdStr: String?)
+    fun showConnectedNotification(networkIdStr: String?, networkName: String?)
 
     /**
      * 在旧版本 Android 上启动多播扫描线程。
@@ -299,7 +300,7 @@ class TunnelConfigurator(
         }
 
         // 状态栏提示
-        host.showConnectedNotification(network.networkIdStr)
+        host.showConnectedNotification(network.networkIdStr, network.networkName)
         Log.i(TAG, "ZeroTier One Connected")
 
         // 旧版本 Android 多播处理

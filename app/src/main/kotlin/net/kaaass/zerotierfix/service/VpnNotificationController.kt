@@ -27,12 +27,17 @@ class VpnNotificationController(private val service: VpnService) {
     /**
      * 构建已连接通知。
      *
+     * 正文优先显示网络名称，名称为空时回退到网络 ID，
+     * 保证通知栏始终能看出当前连接的是哪个网络。
+     *
      * @param networkIdStr 网络 ID 的字符串形式；可能为 `null`
+     * @param networkName 网络名称；可能为 `null` 或空字符串
      * @return 通知对象
      */
-    fun buildConnected(networkIdStr: String?): Notification {
+    fun buildConnected(networkIdStr: String?, networkName: String?): Notification {
         val manager = getNotificationManager()
         createChannelIfNeeded(manager)
+        val displayName = networkName?.takeIf { it.isNotBlank() } ?: networkIdStr
         return NotificationCompat.Builder(this.service, Constants.CHANNEL_ID)
             .setPriority(1)
             .setOngoing(true)
@@ -43,7 +48,7 @@ class VpnNotificationController(private val service: VpnService) {
             .setSmallIcon(R.drawable.ic_zerotier_symbol)
             .setContentTitle(this.service.getString(R.string.notification_title_connected))
             .setContentText(
-                this.service.getString(R.string.notification_text_connected, networkIdStr)
+                this.service.getString(R.string.notification_text_connected, displayName)
             )
             .setColor(
                 ContextCompat.getColor(
