@@ -34,6 +34,7 @@ import net.kaaass.zerotierfix.vpn.engine.QuickTileState
 import net.kaaass.zerotierfix.vpn.engine.QuickTileStatus
 import net.kaaass.zerotierfix.vpn.engine.ServiceState
 import net.kaaass.zerotierfix.vpn.engine.VpnEngine
+import net.kaaass.zerotierfix.vpn.engine.awaitServiceState
 import net.kaaass.zerotierfix.vpn.engine.mapQuickTileStatus
 import net.kaaass.zerotierfix.vpn.engine.selectQuickTileTarget
 
@@ -321,11 +322,12 @@ class QuickTileController @Inject constructor(
             ?.networkId
             ?: lastActivated.value
         vpnEngine.leaveAndStop(connectedId)
-        if (!awaitStableState()) {
-            Log.w(TAG, "Disconnect timed out")
+        // 只认 STOPPED：停止失败时必须回到真实状态，不能假装已断开。
+        if (!awaitServiceState(vpnEngine.serviceState, ServiceState.STOPPED, STATE_TIMEOUT_MS)) {
+            Log.w(TAG, "Service did not stop in time")
             return false
         }
-        return vpnEngine.serviceState.value == ServiceState.STOPPED
+        return true
     }
 
     /**

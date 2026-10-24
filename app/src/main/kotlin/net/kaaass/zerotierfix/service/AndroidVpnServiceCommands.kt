@@ -5,12 +5,14 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.os.IBinder
+import android.os.SystemClock
 import android.util.Log
 
 import dagger.hilt.android.qualifiers.ApplicationContext
 
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -71,8 +73,8 @@ class AndroidVpnServiceCommands @Inject constructor(
 
     override suspend fun stop(): Unit = withContext(dispatcher) {
         mutex.withLock {
-            val state = store.serviceState.value
-            if (state == ServiceState.RUNNING || state == ServiceState.STARTING) {
+            val previous = store.serviceState.value
+            if (previous == ServiceState.RUNNING || previous == ServiceState.STARTING) {
                 val service = acquire(STOP_CONNECT_TIMEOUT_MS)
                 if (service != null) {
                     try {
@@ -88,8 +90,37 @@ class AndroidVpnServiceCommands @Inject constructor(
             } catch (e: Exception) {
                 Log.e(TAG, "stopService failed", e)
             }
-            store.setServiceState(ServiceState.STOPPED)
+
+            if (awaitServiceStopped()) {
+                store.setServiceState(ServiceState.STOPPED)
+            } else {
+                // 服务确实还在运行：保持真实状态，避免磁贴/UI 伪报断开。
+                val actual = if (previous == ServiceState.STARTING) {
+                    ServiceState.STARTING
+                } else {
+                    ServiceState.RUNNING
+                }
+                store.setServiceState(actual)
+                Log.w(TAG, "Service still running after stop timeout")
+            }
         }
+    }
+
+    /**
+     * 等待服务真正从系统中消失。
+     *
+     * `stopZeroTier()` 与 `stopService()` 都是异步生效，必须确认后再写
+     * [ServiceState.STOPPED]，否则停止失败会被状态掩盖。
+     */
+    private suspend fun awaitServiceStopped(): Boolean {
+        val deadline = SystemClock.elapsedRealtime() + STOP_VERIFY_TIMEOUT_MS
+        while (SystemClock.elapsedRealtime() < deadline) {
+            if (!ServiceLiveness.isRunning(context, ZeroTierOneService::class.java)) {
+                return true
+            }
+            delay(STOP_VERIFY_POLL_MS)
+        }
+        return !ServiceLiveness.isRunning(context, ZeroTierOneService::class.java)
     }
 
     override suspend fun join(networkId: Long): VpnCommandResult<Unit> =
@@ -340,5 +371,11 @@ class AndroidVpnServiceCommands @Inject constructor(
         private const val TAG = "AndroidVpnCommands"
         private const val CONNECT_TIMEOUT_MS = 500L
         private const val STOP_CONNECT_TIMEOUT_MS = 500L
+
+        /** 停止后确认服务消失的最长等待时间。 */
+        private const val STOP_VERIFY_TIMEOUT_MS = 2_000L
+
+        /** 停止确认的轮询间隔。 */
+        private const val STOP_VERIFY_POLL_MS = 50L
     }
 }
