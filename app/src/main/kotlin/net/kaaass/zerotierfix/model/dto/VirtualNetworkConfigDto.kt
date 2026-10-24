@@ -1,5 +1,7 @@
 package net.kaaass.zerotierfix.model.dto
 
+import androidx.compose.runtime.Immutable
+
 import net.kaaass.zerotierfix.model.enums.NetworkStatus
 import net.kaaass.zerotierfix.model.enums.NetworkType
 import java.net.InetSocketAddress
@@ -7,6 +9,7 @@ import java.net.InetSocketAddress
 /**
  * ZeroTier 虚拟网络的实时配置，用于跨层传递。
  */
+@Immutable
 data class VirtualNetworkConfigDto(
     /**
      * 网络 ID（十进制）。

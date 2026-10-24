@@ -1,5 +1,7 @@
 package net.kaaass.zerotierfix.features.networklist
 
+import androidx.compose.runtime.Immutable
+
 import net.kaaass.zerotierfix.model.dto.NetworkSummary
 import net.kaaass.zerotierfix.model.dto.NodeStatusDto
 import net.kaaass.zerotierfix.model.enums.NetworkStatus
@@ -14,6 +16,7 @@ import net.kaaass.zerotierfix.vpn.engine.ServiceState
  * @property ipAddresses 已按 IPv6 设置过滤的分配地址
  * @property displayName 展示用网络名：优先数据库名称，其次引擎下发的名称
  */
+@Immutable
 data class NetworkListItem(
     val summary: NetworkSummary,
     val runtimeStatus: NetworkStatus?,
@@ -35,6 +38,7 @@ data class NetworkListItem(
  * @property isNotificationAlertVisible 是否显示通知权限提示
  * @property appVersion 应用版本号
  */
+@Immutable
 data class NetworkListUiState(
     val networks: List<NetworkListItem> = emptyList(),
     val connectedNetworkId: Long? = null,

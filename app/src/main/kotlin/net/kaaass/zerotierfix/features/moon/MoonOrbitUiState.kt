@@ -1,5 +1,7 @@
 package net.kaaass.zerotierfix.features.moon
 
+import androidx.compose.runtime.Immutable
+
 import net.kaaass.zerotierfix.model.dto.MoonOrbitDto
 import net.kaaass.zerotierfix.ui.common.UiText
 
@@ -9,6 +11,7 @@ import net.kaaass.zerotierfix.ui.common.UiText
  * @property moons 已保存的入轨信息
  * @property isLoading 是否正在加载
  */
+@Immutable
 data class MoonOrbitUiState(
     val moons: List<MoonOrbitDto> = emptyList(),
     val isLoading: Boolean = true

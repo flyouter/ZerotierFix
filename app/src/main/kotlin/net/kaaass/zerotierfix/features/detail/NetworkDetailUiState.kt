@@ -1,5 +1,7 @@
 package net.kaaass.zerotierfix.features.detail
 
+import androidx.compose.runtime.Immutable
+
 import net.kaaass.zerotierfix.model.dto.VirtualNetworkConfigDto
 import net.kaaass.zerotierfix.vpn.engine.ServiceState
 
@@ -20,6 +22,7 @@ import net.kaaass.zerotierfix.vpn.engine.ServiceState
  * @property isLoading 是否正在加载
  * @property isNotFound 本地网络或配置是否不存在
  */
+@Immutable
 data class NetworkDetailUiState(
     val networkId: Long = 0L,
     val networkIdStr: String = "",

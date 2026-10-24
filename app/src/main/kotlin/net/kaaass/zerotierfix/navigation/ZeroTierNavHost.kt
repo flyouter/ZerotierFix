@@ -10,16 +10,16 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.dp
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
@@ -61,10 +61,10 @@ fun ZeroTierNavHost(navController: NavHostController = rememberNavController()) 
     val currentRoute = backStackEntry?.destination?.route
     val isTopLevel = ZeroTierTopLevelDestination.isTopLevel(currentRoute)
 
-    val slideDuration = tween<IntOffset>(NAV_TRANSITION_DURATION_MS)
-    val slideFade = tween<Float>(NAV_TRANSITION_DURATION_MS)
-    val topEnter = tween<Float>(TOP_LEVEL_ENTER_MS)
-    val topExit = tween<Float>(TOP_LEVEL_EXIT_MS)
+    val slideDuration = remember { tween<IntOffset>(NAV_TRANSITION_DURATION_MS) }
+    val slideFade = remember { tween<Float>(NAV_TRANSITION_DURATION_MS) }
+    val topEnter = remember { tween<Float>(TOP_LEVEL_ENTER_MS) }
+    val topExit = remember { tween<Float>(TOP_LEVEL_EXIT_MS) }
 
     val onSelectTopLevel: (ZeroTierTopLevelDestination) -> Unit = { destination ->
         navController.navigate(destination.route) {
@@ -76,135 +76,134 @@ fun ZeroTierNavHost(navController: NavHostController = rememberNavController()) 
         }
     }
 
-    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        val useRail = maxWidth >= WIDE_LAYOUT_MIN_WIDTH_DP.dp
-        Row(modifier = Modifier.fillMaxSize()) {
+    // 使用 Configuration 宽度，避免 BoxWithConstraints 在首帧引入额外的 SubcomposeLayout。
+    val useRail = LocalConfiguration.current.screenWidthDp >= WIDE_LAYOUT_MIN_WIDTH_DP
+    Row(modifier = Modifier.fillMaxSize()) {
+        AnimatedVisibility(
+            visible = isTopLevel && useRail,
+            enter = fadeIn(tween(160)) + expandHorizontally(tween(180)),
+            exit = fadeOut(tween(120)) + shrinkHorizontally(tween(160))
+        ) {
+            ZerotierNavigationRail(
+                selectedRoute = currentRoute,
+                onSelect = onSelectTopLevel
+            )
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Box(modifier = Modifier.weight(1f)) {
+                NavHost(
+                    navController = navController,
+                    startDestination = ZeroTierRoutes.NETWORK_LIST,
+                    modifier = Modifier.fillMaxSize(),
+                    enterTransition = {
+                        if (isTopLevelTransition(initialState, targetState)) {
+                            fadeIn(topEnter)
+                        } else {
+                            slideIntoContainer(
+                                towards = AnimatedContentTransitionScope.SlideDirection.Start,
+                                animationSpec = slideDuration
+                            ) + fadeIn(slideFade)
+                        }
+                    },
+                    exitTransition = {
+                        if (isTopLevelTransition(initialState, targetState)) {
+                            fadeOut(topExit)
+                        } else {
+                            slideOutOfContainer(
+                                towards = AnimatedContentTransitionScope.SlideDirection.Start,
+                                animationSpec = slideDuration
+                            ) + fadeOut(slideFade)
+                        }
+                    },
+                    popEnterTransition = {
+                        if (isTopLevelTransition(initialState, targetState)) {
+                            fadeIn(topEnter)
+                        } else {
+                            slideIntoContainer(
+                                towards = AnimatedContentTransitionScope.SlideDirection.End,
+                                animationSpec = slideDuration
+                            ) + fadeIn(slideFade)
+                        }
+                    },
+                    popExitTransition = {
+                        if (isTopLevelTransition(initialState, targetState)) {
+                            fadeOut(topExit)
+                        } else {
+                            slideOutOfContainer(
+                                towards = AnimatedContentTransitionScope.SlideDirection.End,
+                                animationSpec = slideDuration
+                            ) + fadeOut(slideFade)
+                        }
+                    }
+                ) {
+                    composable(ZeroTierRoutes.NETWORK_LIST) {
+                        NetworkListRoute(
+                            onAddNetwork = { navController.navigate(ZeroTierRoutes.JOIN) },
+                            onOpenNetwork = { networkId ->
+                                navController.navigate(ZeroTierRoutes.detail(networkId))
+                            },
+                            onOpenMoon = { navController.navigate(ZeroTierRoutes.MOON) }
+                        )
+                    }
+                    composable(ZeroTierRoutes.JOIN) { entry ->
+                        JoinNetworkRoute(
+                            onBack = { navController.popBackStack() },
+                            onScanRequested = { navController.navigate(ZeroTierRoutes.SCAN) },
+                            savedStateHandle = entry.savedStateHandle
+                        )
+                    }
+                    composable(
+                        route = ZeroTierRoutes.SCAN,
+                        enterTransition = { fadeIn(tween(150)) },
+                        popExitTransition = { fadeOut(tween(150)) }
+                    ) {
+                        NetworkScanRoute(
+                            onBack = { navController.popBackStack() },
+                            onScanned = { networkId ->
+                                navController.previousBackStackEntry
+                                    ?.takeIf { it.destination.route == ZeroTierRoutes.JOIN }
+                                    ?.savedStateHandle
+                                    ?.set(ZeroTierRoutes.SCAN_RESULT_KEY, networkId)
+                                navController.popBackStack()
+                            }
+                        )
+                    }
+                    composable(
+                        route = ZeroTierRoutes.DETAIL,
+                        arguments = listOf(
+                            navArgument(ZeroTierRoutes.DETAIL_ARG_NETWORK_ID) {
+                                type = NavType.LongType
+                            }
+                        )
+                    ) {
+                        NetworkDetailRoute(onBack = { navController.popBackStack() })
+                    }
+                    composable(ZeroTierRoutes.MOON) {
+                        MoonOrbitRoute(onBack = { navController.popBackStack() })
+                    }
+                    composable(ZeroTierRoutes.PEER) {
+                        PeerListRoute()
+                    }
+                    composable(ZeroTierRoutes.SETTINGS) {
+                        SettingsRoute()
+                    }
+                }
+            }
             AnimatedVisibility(
-                visible = isTopLevel && useRail,
-                enter = fadeIn(tween(160)) + expandHorizontally(tween(180)),
-                exit = fadeOut(tween(120)) + shrinkHorizontally(tween(160))
+                visible = isTopLevel && !useRail,
+                enter = fadeIn(tween(160)) + expandVertically(
+                    animationSpec = tween(180),
+                    expandFrom = Alignment.Top
+                ),
+                exit = fadeOut(tween(120)) + shrinkVertically(
+                    animationSpec = tween(160),
+                    shrinkTowards = Alignment.Top
+                )
             ) {
-                ZerotierNavigationRail(
+                ZerotierBottomBar(
                     selectedRoute = currentRoute,
                     onSelect = onSelectTopLevel
                 )
-            }
-            Column(modifier = Modifier.weight(1f)) {
-                Box(modifier = Modifier.weight(1f)) {
-                    NavHost(
-                        navController = navController,
-                        startDestination = ZeroTierRoutes.NETWORK_LIST,
-                        modifier = Modifier.fillMaxSize(),
-                        enterTransition = {
-                            if (isTopLevelTransition(initialState, targetState)) {
-                                fadeIn(topEnter)
-                            } else {
-                                slideIntoContainer(
-                                    towards = AnimatedContentTransitionScope.SlideDirection.Start,
-                                    animationSpec = slideDuration
-                                ) + fadeIn(slideFade)
-                            }
-                        },
-                        exitTransition = {
-                            if (isTopLevelTransition(initialState, targetState)) {
-                                fadeOut(topExit)
-                            } else {
-                                slideOutOfContainer(
-                                    towards = AnimatedContentTransitionScope.SlideDirection.Start,
-                                    animationSpec = slideDuration
-                                ) + fadeOut(slideFade)
-                            }
-                        },
-                        popEnterTransition = {
-                            if (isTopLevelTransition(initialState, targetState)) {
-                                fadeIn(topEnter)
-                            } else {
-                                slideIntoContainer(
-                                    towards = AnimatedContentTransitionScope.SlideDirection.End,
-                                    animationSpec = slideDuration
-                                ) + fadeIn(slideFade)
-                            }
-                        },
-                        popExitTransition = {
-                            if (isTopLevelTransition(initialState, targetState)) {
-                                fadeOut(topExit)
-                            } else {
-                                slideOutOfContainer(
-                                    towards = AnimatedContentTransitionScope.SlideDirection.End,
-                                    animationSpec = slideDuration
-                                ) + fadeOut(slideFade)
-                            }
-                        }
-                    ) {
-                        composable(ZeroTierRoutes.NETWORK_LIST) {
-                            NetworkListRoute(
-                                onAddNetwork = { navController.navigate(ZeroTierRoutes.JOIN) },
-                                onOpenNetwork = { networkId ->
-                                    navController.navigate(ZeroTierRoutes.detail(networkId))
-                                },
-                                onOpenMoon = { navController.navigate(ZeroTierRoutes.MOON) }
-                            )
-                        }
-                        composable(ZeroTierRoutes.JOIN) { entry ->
-                            JoinNetworkRoute(
-                                onBack = { navController.popBackStack() },
-                                onScanRequested = { navController.navigate(ZeroTierRoutes.SCAN) },
-                                savedStateHandle = entry.savedStateHandle
-                            )
-                        }
-                        composable(
-                            route = ZeroTierRoutes.SCAN,
-                            enterTransition = { fadeIn(tween(150)) },
-                            popExitTransition = { fadeOut(tween(150)) }
-                        ) {
-                            NetworkScanRoute(
-                                onBack = { navController.popBackStack() },
-                                onScanned = { networkId ->
-                                    navController.previousBackStackEntry
-                                        ?.takeIf { it.destination.route == ZeroTierRoutes.JOIN }
-                                        ?.savedStateHandle
-                                        ?.set(ZeroTierRoutes.SCAN_RESULT_KEY, networkId)
-                                    navController.popBackStack()
-                                }
-                            )
-                        }
-                        composable(
-                            route = ZeroTierRoutes.DETAIL,
-                            arguments = listOf(
-                                navArgument(ZeroTierRoutes.DETAIL_ARG_NETWORK_ID) {
-                                    type = NavType.LongType
-                                }
-                            )
-                        ) {
-                            NetworkDetailRoute(onBack = { navController.popBackStack() })
-                        }
-                        composable(ZeroTierRoutes.MOON) {
-                            MoonOrbitRoute(onBack = { navController.popBackStack() })
-                        }
-                        composable(ZeroTierRoutes.PEER) {
-                            PeerListRoute()
-                        }
-                        composable(ZeroTierRoutes.SETTINGS) {
-                            SettingsRoute()
-                        }
-                    }
-                }
-                AnimatedVisibility(
-                    visible = isTopLevel && !useRail,
-                    enter = fadeIn(tween(160)) + expandVertically(
-                        animationSpec = tween(180),
-                        expandFrom = Alignment.Top
-                    ),
-                    exit = fadeOut(tween(120)) + shrinkVertically(
-                        animationSpec = tween(160),
-                        shrinkTowards = Alignment.Top
-                    )
-                ) {
-                    ZerotierBottomBar(
-                        selectedRoute = currentRoute,
-                        onSelect = onSelectTopLevel
-                    )
-                }
             }
         }
     }

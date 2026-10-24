@@ -1,5 +1,7 @@
 package net.kaaass.zerotierfix.features.peer
 
+import androidx.compose.runtime.Immutable
+
 import net.kaaass.zerotierfix.model.dto.PeerInfoDto
 import net.kaaass.zerotierfix.ui.common.UiText
 
@@ -26,6 +28,7 @@ enum class PeerListError {
  * @property isLoading 首次加载是否进行中
  * @property error 最近一次加载错误；`null` 表示没有错误
  */
+@Immutable
 data class PeerListUiState(
     val peers: List<PeerInfoDto> = emptyList(),
     val isRefreshing: Boolean = false,

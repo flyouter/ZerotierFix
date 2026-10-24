@@ -1,10 +1,13 @@
 package net.kaaass.zerotierfix.model.dto
 
+import androidx.compose.runtime.Immutable
+
 import net.kaaass.zerotierfix.model.enums.PeerRole
 
 /**
  * ZeroTier 对等节点信息。
  */
+@Immutable
 data class PeerInfoDto(
     /**
      * 节点地址（十进制）。

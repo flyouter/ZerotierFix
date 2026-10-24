@@ -1,10 +1,13 @@
 package net.kaaass.zerotierfix.model.dto
 
+import androidx.compose.runtime.Immutable
+
 import java.net.InetSocketAddress
 
 /**
  * ZeroTier 网络下发的 DNS 配置。
  */
+@Immutable
 data class VirtualNetworkDnsDto(
     /**
      * DNS 搜索域；可能为 `null`。

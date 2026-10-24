@@ -3,6 +3,7 @@ package net.kaaass.zerotierfix.ui.common
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
@@ -28,10 +29,13 @@ fun MonoText(
     maxLines: Int = Int.MAX_VALUE,
     overflow: TextOverflow = TextOverflow.Clip
 ) {
+    val monospaceStyle = remember(style) {
+        style.copy(fontFamily = FontFamily.Monospace)
+    }
     Text(
         text = value,
         modifier = modifier,
-        style = style.copy(fontFamily = FontFamily.Monospace),
+        style = monospaceStyle,
         color = color,
         maxLines = maxLines,
         overflow = overflow

@@ -1,8 +1,11 @@
 package net.kaaass.zerotierfix.model.dto
 
+import androidx.compose.runtime.Immutable
+
 /**
  * Moon 入轨信息，用于界面展示与跨层传递。
  */
+@Immutable
 data class MoonOrbitDto(
     /**
      * Moon 地址（world ID）。

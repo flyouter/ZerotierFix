@@ -1,8 +1,11 @@
 package net.kaaass.zerotierfix.model.dto
 
+import androidx.compose.runtime.Immutable
+
 /**
  * 本机 ZeroTier 节点状态。
  */
+@Immutable
 data class NodeStatusDto(
     /**
      * 是否在线。

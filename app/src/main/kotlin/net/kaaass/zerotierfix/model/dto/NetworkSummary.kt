@@ -1,8 +1,11 @@
 package net.kaaass.zerotierfix.model.dto
 
+import androidx.compose.runtime.Immutable
+
 /**
  * 网络概要信息，用于网络列表和跨层传递。
  */
+@Immutable
 data class NetworkSummary(
     /**
      * 网络 ID（十进制）。
