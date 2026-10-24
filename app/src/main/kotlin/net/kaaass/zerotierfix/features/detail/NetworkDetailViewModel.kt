@@ -18,12 +18,12 @@ import net.kaaass.zerotierfix.data.repository.NetworkRepository
 import net.kaaass.zerotierfix.data.repository.SettingsRepository
 import net.kaaass.zerotierfix.di.IoDispatcher
 import net.kaaass.zerotierfix.model.dto.VirtualNetworkConfigDto
+import net.kaaass.zerotierfix.model.enums.DNSMode
 import net.kaaass.zerotierfix.navigation.ZeroTierRoutes
+import net.kaaass.zerotierfix.util.StringUtils
+import net.kaaass.zerotierfix.vpn.engine.ServiceState
 import net.kaaass.zerotierfix.vpn.engine.VpnCommandResult
 import net.kaaass.zerotierfix.vpn.engine.VpnEngine
-
-import java.net.Inet6Address
-import java.net.InetSocketAddress
 
 import javax.inject.Inject
 
@@ -53,6 +53,7 @@ class NetworkDetailViewModel @Inject constructor(
 
     init {
         observeVirtualNetworkConfig()
+        observeServiceState()
     }
 
     /**
@@ -62,19 +63,27 @@ class NetworkDetailViewModel @Inject constructor(
      */
     fun load() {
         viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, isNotFound = false) }
             val summary = withContext(ioDispatcher) {
                 networkRepository.getNetworkSummary(networkId)
-            } ?: return@launch
+            }
             val config = withContext(ioDispatcher) {
                 networkRepository.getNetworkConfig(networkId)
-            } ?: return@launch
+            }
+            if (summary == null || config == null) {
+                _uiState.update { it.copy(isLoading = false, isNotFound = true) }
+                return@launch
+            }
+            val dnsMode = parseDnsMode(config.dnsMode)
             _uiState.update {
                 it.copy(
                     networkIdStr = summary.networkIdStr ?: "",
                     networkName = summary.networkName.orEmpty(),
-                    dnsMode = config.dnsMode,
+                    dnsMode = dnsMode,
+                    customDnsServers = config.dnsServers,
                     isRouteViaZeroTier = config.isRouteViaZeroTier,
-                    isLoading = false
+                    isLoading = false,
+                    isNotFound = false
                 )
             }
             // 复刻旧实现中 setChecked(true) 触发的重配副作用，仅一次
@@ -86,6 +95,13 @@ class NetworkDetailViewModel @Inject constructor(
                 else -> Unit
             }
         }
+    }
+
+    /**
+     * 重新加载页面。
+     */
+    fun retry() {
+        load()
     }
 
     /**
@@ -122,6 +138,31 @@ class NetworkDetailViewModel @Inject constructor(
     }
 
     /**
+     * 订阅服务生命周期状态。
+     */
+    private fun observeServiceState() {
+        viewModelScope.launch {
+            vpnEngine.serviceState.collect { serviceState ->
+                _uiState.update { state ->
+                    if (serviceState == ServiceState.STOPPED ||
+                        serviceState == ServiceState.UNKNOWN
+                    ) {
+                        state.copy(
+                            serviceState = serviceState,
+                            virtualConfig = null,
+                            ipAddresses = emptyList(),
+                            dnsServers = emptyList(),
+                            dnsDomain = null
+                        )
+                    } else {
+                        state.copy(serviceState = serviceState)
+                    }
+                }
+            }
+        }
+    }
+
+    /**
      * 应用实时配置并刷新展示字段。
      *
      * @param config 实时网络配置
@@ -135,32 +176,24 @@ class NetworkDetailViewModel @Inject constructor(
             state.copy(
                 virtualConfig = config,
                 networkName = config.networkName?.takeIf { it.isNotEmpty() } ?: state.networkName,
-                ipAddresses = config.assignedAddresses.map {
-                    formatAddress(it, disableIpv6) ?: "null"
+                ipAddresses = config.assignedAddresses.mapNotNull {
+                    StringUtils.formatAddressWithPrefix(it, disableIpv6)
                 },
-                dnsServers = config.dns?.servers?.map {
-                    formatAddress(it, disableIpv6) ?: "null"
-                } ?: emptyList()
+                dnsServers = config.dns?.servers?.mapNotNull {
+                    StringUtils.formatAddressWithPrefix(it, disableIpv6)
+                } ?: emptyList(),
+                dnsDomain = config.dns?.domain?.takeIf { it.isNotEmpty() }
             )
         }
     }
 
     /**
-     * 将套接字地址格式化为 `地址/前缀`。
+     * 解析持久化的 DNS 模式，非法值回退到无 DNS，避免旧数据导致崩溃。
      *
-     * @param address 套接字地址
-     * @param disableIpv6 是否过滤 IPv6 地址
-     * @return 格式化字符串；地址不可用或被过滤时返回 `null`
+     * @param value 持久化值
+     * @return 合法的 DNS 模式持久化值
      */
-    private fun formatAddress(address: InetSocketAddress, disableIpv6: Boolean): String? {
-        val inetAddress = address.address ?: return null
-        if (disableIpv6 && inetAddress is Inet6Address) {
-            return null
-        }
-        var text = inetAddress.toString()
-        if (text.startsWith("/")) {
-            text = text.substring(1)
-        }
-        return "$text/${address.port}"
-    }
+    private fun parseDnsMode(value: Int): Int = runCatching {
+        DNSMode.fromInt(value).toInt()
+    }.getOrDefault(DNSMode.NO_DNS.toInt())
 }

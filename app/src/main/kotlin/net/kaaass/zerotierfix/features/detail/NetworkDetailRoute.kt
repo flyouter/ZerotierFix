@@ -26,6 +26,7 @@ fun NetworkDetailRoute(
     NetworkDetailScreen(
         state = state,
         onRouteViaZeroTierChanged = viewModel::onRouteViaZeroTierChanged,
+        onRetry = viewModel::retry,
         onBack = onBack
     )
 }
