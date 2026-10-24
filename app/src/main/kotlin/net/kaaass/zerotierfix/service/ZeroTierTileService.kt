@@ -1,5 +1,6 @@
 package net.kaaass.zerotierfix.service
 
+import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.content.Intent
 import android.graphics.drawable.Icon
@@ -108,6 +109,7 @@ class ZeroTierTileService : TileService() {
     /**
      * 启动透明授权页，完成系统 VPN 授权后自动连接。
      */
+    @SuppressLint("StartActivityAndCollapseDeprecated")
     private fun launchConsentActivity(networkId: Long) {
         val intent = Intent(this, VpnConsentActivity::class.java).apply {
             putExtra(VpnConsentActivity.EXTRA_NETWORK_ID, networkId)
