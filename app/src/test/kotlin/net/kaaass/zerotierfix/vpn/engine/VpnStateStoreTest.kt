@@ -5,7 +5,9 @@ import net.kaaass.zerotierfix.model.enums.NetworkStatus
 import net.kaaass.zerotierfix.model.enums.NetworkType
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -63,6 +65,23 @@ class VpnStateStoreTest {
         store.setVirtualNetworkConfig(1L, sampleConfig(1L))
         store.clearVirtualNetworkConfigs()
         assertNull(store.virtualNetworkConfigs.value)
+    }
+
+    /**
+     * 条件写入不能覆盖并发写入的状态。
+     */
+    @Test
+    fun compareAndSetServiceStateDoesNotOverwrite() {
+        val store = VpnStateStore()
+        store.setServiceState(ServiceState.STARTING)
+        assertFalse(
+            store.compareAndSetServiceState(ServiceState.UNKNOWN, ServiceState.STOPPED)
+        )
+        assertEquals(ServiceState.STARTING, store.serviceState.value)
+        assertTrue(
+            store.compareAndSetServiceState(ServiceState.STARTING, ServiceState.RUNNING)
+        )
+        assertEquals(ServiceState.RUNNING, store.serviceState.value)
     }
 
     /**

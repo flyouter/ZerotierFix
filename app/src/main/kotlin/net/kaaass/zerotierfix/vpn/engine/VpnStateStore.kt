@@ -92,6 +92,19 @@ class VpnStateStore @Inject constructor() {
     }
 
     /**
+     * 仅当当前状态为 [expected] 时原子更新为 [next]。
+     *
+     * 服务在主线程写状态，命令层在单并发调度器写状态，二者不在同一串行域；
+     * 条件归一化必须使用原子比较，避免覆盖并发写入的 `STARTING/RUNNING`。
+     *
+     * @return 是否完成替换
+     */
+    fun compareAndSetServiceState(
+        expected: ServiceState,
+        next: ServiceState
+    ): Boolean = _serviceState.compareAndSet(expected, next)
+
+    /**
      * 更新 Binder 状态。
      *
      * @param state 新状态

@@ -193,7 +193,8 @@ class AndroidVpnServiceCommands @Inject constructor(
         val state = store.serviceState.value
         if (state != ServiceState.RUNNING && state != ServiceState.STARTING) {
             if (state == ServiceState.UNKNOWN) {
-                store.setServiceState(ServiceState.STOPPED)
+                // 原子归一化：服务可能同时在主线程写入 STARTING/RUNNING。
+                store.compareAndSetServiceState(ServiceState.UNKNOWN, ServiceState.STOPPED)
             }
             return@withContext
         }
