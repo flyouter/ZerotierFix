@@ -38,8 +38,6 @@ import net.kaaass.zerotierfix.util.NetworkIdScanResult
 
 import java.util.concurrent.Executors
 
-import zxingcpp.BarcodeReader
-
 /**
  * 相机启动失败的原因。
  */
@@ -241,15 +239,7 @@ private class BarcodeAnalyzer(
 ) : ImageAnalysis.Analyzer {
 
     private val reader by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
-        BarcodeReader().apply {
-            options = BarcodeReader.Options(
-                formats = setOf(BarcodeReader.Format.QR_CODE),
-                tryHarder = true,
-                tryRotate = true,
-                tryInvert = true,
-                maxNumberOfSymbols = 1
-            )
-        }
+        newQrCodeReader()
     }
 
     @Volatile

@@ -12,8 +12,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith
 
-import zxingcpp.BarcodeReader
-
 /**
  * 验证 zxing-cpp 原生库能在设备上解码网络邀请二维码。
  */
@@ -25,13 +23,7 @@ class BarcodeDecoderTest {
         val context = InstrumentationRegistry.getInstrumentation().context
         val bitmap = context.assets.open("join_qr.png").use { BitmapFactory.decodeStream(it) }
 
-        val reader = BarcodeReader().apply {
-            options = BarcodeReader.Options(
-                formats = setOf(BarcodeReader.Format.QR_CODE),
-                tryHarder = true
-            )
-        }
-        val results = reader.read(bitmap)
+        val results = newQrCodeReader().read(bitmap)
 
         assertEquals(1, results.size)
         val text = results.first().text
