@@ -6,10 +6,13 @@ buildscript {
     }
     dependencies {
         classpath 'com.android.tools.build:gradle:9.4.1'
-        // KSP 版本需与 AGP 9.4.1 内置 Kotlin（2.2.10）匹配
-        classpath 'com.google.devtools.ksp:symbol-processing-gradle-plugin:2.2.10-2.0.2'
-        // Compose 编译器插件版本必须与内置 Kotlin 2.2.10 一致
-        classpath 'org.jetbrains.kotlin.plugin.compose:org.jetbrains.kotlin.plugin.compose.gradle.plugin:2.2.10'
+        // 抬升 AGP 内置 Kotlin（AGP 对 KGP 是软约束，classpath 更高版本生效），
+        // 以读取 Kotlin 2.3 metadata（zxing-cpp 3.1.x 需要）
+        classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.21'
+        // KSP 2.3+ 起版本与 Kotlin 解耦，2.3.12 支持 Kotlin 2.4 / AGP 9
+        classpath 'com.google.devtools.ksp:symbol-processing-gradle-plugin:2.3.12'
+        // Compose 编译器插件版本必须与 Kotlin 2.4.21 一致
+        classpath 'org.jetbrains.kotlin.plugin.compose:org.jetbrains.kotlin.plugin.compose.gradle.plugin:2.4.21'
         // Hilt 2.58+ 支持 AGP 9 新 DSL
         classpath 'com.google.dagger:hilt-android-gradle-plugin:2.60.1'
 
