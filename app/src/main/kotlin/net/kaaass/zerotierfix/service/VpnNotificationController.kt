@@ -40,7 +40,7 @@ class VpnNotificationController(private val service: VpnService) {
             .setForegroundServiceBehavior(
                 NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE
             )
-            .setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(R.drawable.ic_zerotier_symbol)
             .setContentTitle(this.service.getString(R.string.notification_title_connected))
             .setContentText(
                 this.service.getString(R.string.notification_text_connected, networkIdStr)

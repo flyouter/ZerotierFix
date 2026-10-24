@@ -188,7 +188,7 @@ class ZeroTierTileService : TileService() {
             R.string.quick_tile_content_description,
             subtitle
         )
-        tile.icon = Icon.createWithResource(this, R.drawable.ic_qs_zerotier)
+        tile.icon = Icon.createWithResource(this, R.drawable.ic_zerotier_symbol)
         tile.state = when (state.status) {
             QuickTileStatus.UNAVAILABLE, QuickTileStatus.INACTIVE -> Tile.STATE_INACTIVE
             QuickTileStatus.CONNECTING, QuickTileStatus.ACTIVE -> Tile.STATE_ACTIVE
