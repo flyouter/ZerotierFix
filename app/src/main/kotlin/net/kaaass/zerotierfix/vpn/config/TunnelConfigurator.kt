@@ -39,6 +39,9 @@ interface TunnelHost {
     /** 当前 TUN/TAP 适配器；未初始化时为 `null`。 */
     val currentAdapter: TunTapAdapter?
 
+    /** 是否已请求停止；为 `true` 时不得建立隧道或发送通知。 */
+    val isStopping: Boolean
+
     /** VPN 未授权或已撤销时的错误消息。 */
     val vpnNotPreparedMessage: String
 
@@ -115,6 +118,11 @@ class TunnelConfigurator(
      * @return 配置成功返回 `true`；无可用地址或建立失败返回 `false`
      */
     fun configure(network: NetworkSummary, disableIpv6: Boolean): Boolean {
+        // 停止流程已开始：不得再建立隧道，否则会在停止后重新拉起 VPN。
+        if (host.isStopping) {
+            Log.i(TAG, "Service is stopping; skip tunnel configuration")
+            return false
+        }
         val node = host.currentNode ?: return false
         val networkId = network.networkId
         val networkConfig = networkRepository.getNetworkConfig(networkId)
@@ -271,9 +279,24 @@ class TunnelConfigurator(
             host.emitTunnelError(host.vpnNotPreparedMessage)
             return false
         }
+        // establish() 无法中断；若期间已开始停止，立即关闭刚建立的隧道。
+        if (host.isStopping) {
+            Log.i(TAG, "Service stopped during establish; close new tunnel")
+            try {
+                socket.close()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error closing tunnel socket", e)
+            }
+            return false
+        }
         val input = FileInputStream(socket.fileDescriptor)
         val output = FileOutputStream(socket.fileDescriptor)
         host.onTunnelEstablished(socket, input, output)
+
+        // onTunnelEstablished 可能已因停止而关闭隧道，此时不再发通知。
+        if (host.isStopping) {
+            return false
+        }
 
         // 状态栏提示
         host.showConnectedNotification(network.networkIdStr)

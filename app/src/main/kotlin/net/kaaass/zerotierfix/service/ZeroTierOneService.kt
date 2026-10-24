@@ -104,7 +104,10 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
     }
 
     private val stopStateLock = Any()
-    private var isStopping = false
+
+    /** 是否已请求停止；跨线程读取，必须使用 volatile。 */
+    @Volatile
+    private var stopping = false
 
     private var dataStore: DataStore? = null
     private var input: FileInputStream? = null
@@ -227,6 +230,8 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
             stopSelf(startId)
             return Service.START_NOT_STICKY
         }
+        // 服务实例可能在上一次停止后被复用（切换网络），必须清除停止信号。
+        this.stopping = false
         this.mStartID = startId
         store.setServiceState(ServiceState.STARTING)
 
@@ -364,10 +369,10 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
      */
     fun stopZeroTier() {
         synchronized(stopStateLock) {
-            if (this.isStopping) {
+            if (this.stopping) {
                 return
             }
-            this.isStopping = true
+            this.stopping = true
         }
         try {
             val deadline = SystemClock.elapsedRealtime() + TEARDOWN_TIMEOUT_MS
@@ -433,9 +438,8 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
             if (!stopSelfResult(this.mStartID)) {
                 Log.e(TAG, "stopSelfResult() failed!")
             }
-            synchronized(stopStateLock) {
-                this.isStopping = false
-            }
+            // 停止信号保持置位，直到 onStartCommand 开始新的会话。
+            // 这样在服务真正销毁前，迟到的 configure() 也无法重建隧道。
         }
     }
 
@@ -644,6 +648,9 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
      * @param networkId 网络 ID
      */
     fun reconfigureNetwork(networkId: Long) {
+        if (this.stopping) {
+            return
+        }
         if (networkId != this.networkId) {
             return
         }
@@ -724,6 +731,10 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
         op: VirtualNetworkConfigOperation,
         config: VirtualNetworkConfig?
     ): Int {
+        if (this.stopping) {
+            Log.d(TAG, "Ignore network config update while stopping")
+            return 0
+        }
         Log.i(TAG, "Virtual Network Config Operation: $op")
         var reconfigure: ReconfigureRequest? = null
         DatabaseUtils.writeLock.lock()
@@ -829,6 +840,8 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
      * 启动失败时同步服务状态，避免 UI 停留在 `STARTING`。
      */
     private fun markServiceStopped() {
+        // 启动失败后同样置位，阻止迟到的网络配置回调重新建立隧道。
+        this.stopping = true
         store.setServiceState(ServiceState.STOPPED)
         store.setNodeStatus(null)
         store.setConnectedNetworks(null)
@@ -847,6 +860,9 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
 
     override val vpnService: VpnService
         get() = this
+
+    override val isStopping: Boolean
+        get() = this.stopping
 
     override val currentNode: Node?
         get() = this.node
@@ -889,6 +905,16 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
         input: FileInputStream,
         output: FileOutputStream
     ) {
+        if (this.stopping) {
+            // 停止流程已开始：立即关闭刚建立的隧道，避免 VPN 被重新拉起。
+            Log.w(TAG, "Ignore tunnel establishment while stopping")
+            try {
+                socket.close()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error closing stopped tunnel socket", e)
+            }
+            return
+        }
         this.vpnSocket = socket
         this.input = input
         this.output = output
@@ -899,6 +925,9 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
     }
 
     override fun showConnectedNotification(networkIdStr: String?) {
+        if (this.stopping) {
+            return
+        }
         enterForeground(networkIdStr)
     }
 
