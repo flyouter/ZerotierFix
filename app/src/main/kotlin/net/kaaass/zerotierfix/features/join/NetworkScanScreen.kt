@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -47,12 +48,14 @@ import kotlin.math.min
  * @param cameraError 相机错误
  * @param torchOn 手电筒是否开启
  * @param hasFlash 相机是否有闪光灯
+ * @param imageDecoding 是否正在解码本地图片
  * @param snackbarHostState Snackbar 宿主状态
  * @param onBack 返回
  * @param onRequestPermission 申请相机权限
  * @param onOpenSettings 打开应用设置
  * @param onTorchToggle 切换手电筒
  * @param onTorchAvailabilityChanged 手电筒可用性变化
+ * @param onPickImage 从本地图片选择二维码
  * @param onScanned 识别成功
  * @param onInvalidCode 识别到无效邀请码
  * @param onCameraError 相机错误回调
@@ -65,12 +68,14 @@ fun NetworkScanScreen(
     cameraError: CameraScanError?,
     torchOn: Boolean,
     hasFlash: Boolean,
+    imageDecoding: Boolean,
     snackbarHostState: SnackbarHostState,
     onBack: () -> Unit,
     onRequestPermission: () -> Unit,
     onOpenSettings: () -> Unit,
     onTorchToggle: () -> Unit,
     onTorchAvailabilityChanged: (Boolean) -> Unit,
+    onPickImage: () -> Unit,
     onScanned: (String) -> Unit,
     onInvalidCode: (NetworkIdScanResult) -> Unit,
     onCameraError: (CameraScanError) -> Unit,
@@ -98,6 +103,16 @@ fun NetworkScanScreen(
                                 }
                             )
                         }
+                    }
+                    // 相册入口不受相机权限/相机错误影响
+                    IconButton(
+                        onClick = onPickImage,
+                        enabled = !imageDecoding
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_photo_library),
+                            contentDescription = stringResource(R.string.cd_pick_image)
+                        )
                     }
                 }
             )
@@ -130,6 +145,7 @@ fun NetworkScanScreen(
                     ) {
                         CameraBarcodePreview(
                             torchOn = torchOn,
+                            paused = imageDecoding,
                             onTorchAvailabilityChanged = onTorchAvailabilityChanged,
                             onScanned = onScanned,
                             onInvalidCode = onInvalidCode,
@@ -154,6 +170,31 @@ fun NetworkScanScreen(
                     }
                 }
             }
+
+            if (imageDecoding) {
+                ImageDecodingOverlay(modifier = Modifier.fillMaxSize())
+            }
+        }
+    }
+}
+
+/**
+ * 正在解码本地图片时的遮罩。
+ */
+@Composable
+private fun ImageDecodingOverlay(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier.background(Color.Black.copy(alpha = DECODING_SCRIM_ALPHA)),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            CircularProgressIndicator(color = Color.White)
+            Text(
+                text = stringResource(R.string.scan_image_decoding),
+                color = Color.White,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(top = 16.dp)
+            )
         }
     }
 }
@@ -311,6 +352,9 @@ private const val CORNER_STROKE_DP = 4
 /** 底部提示底衬透明度。 */
 private const val HINT_SCRIM_ALPHA = 0.55f
 
+/** 图片解码遮罩透明度。 */
+private const val DECODING_SCRIM_ALPHA = 0.6f
+
 @Preview(showBackground = true)
 @Composable
 private fun NetworkScanScreenPermissionPreview() {
@@ -321,12 +365,39 @@ private fun NetworkScanScreenPermissionPreview() {
             cameraError = null,
             torchOn = false,
             hasFlash = false,
+            imageDecoding = false,
             snackbarHostState = remember { SnackbarHostState() },
             onBack = {},
             onRequestPermission = {},
             onOpenSettings = {},
             onTorchToggle = {},
             onTorchAvailabilityChanged = {},
+            onPickImage = {},
+            onScanned = {},
+            onInvalidCode = {},
+            onCameraError = {}
+        )
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+private fun NetworkScanScreenImageDecodingPreview() {
+    ZerotierFixTheme {
+        NetworkScanScreen(
+            permissionGranted = false,
+            cameraAvailable = true,
+            cameraError = null,
+            torchOn = false,
+            hasFlash = false,
+            imageDecoding = true,
+            snackbarHostState = remember { SnackbarHostState() },
+            onBack = {},
+            onRequestPermission = {},
+            onOpenSettings = {},
+            onTorchToggle = {},
+            onTorchAvailabilityChanged = {},
+            onPickImage = {},
             onScanned = {},
             onInvalidCode = {},
             onCameraError = {}

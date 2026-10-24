@@ -60,6 +60,7 @@ enum class CameraScanError {
  * 在部分 legacy HAL 设备上会因预览流 DataSpace 不兼容而无法出帧，故不采用。
  *
  * @param torchOn 是否开启手电筒
+ * @param paused 是否暂停分析（例如正在解码本地图片）
  * @param onTorchAvailabilityChanged 手电筒可用性回调
  * @param onScanned 识别到有效邀请码回调，参数为 16 位小写网络 ID
  * @param onInvalidCode 识别到无效邀请码回调
@@ -69,6 +70,7 @@ enum class CameraScanError {
 @Composable
 fun CameraBarcodePreview(
     torchOn: Boolean,
+    paused: Boolean = false,
     onTorchAvailabilityChanged: (Boolean) -> Unit,
     onScanned: (String) -> Unit,
     onInvalidCode: (NetworkIdScanResult) -> Unit,
@@ -185,6 +187,10 @@ fun CameraBarcodePreview(
         camera?.cameraControl?.enableTorch(torchOn)
     }
 
+    LaunchedEffect(paused) {
+        analyzer.setPaused(paused)
+    }
+
     LaunchedEffect(Unit) {
         for (raw in resultChannel) {
             when (val result = NetworkIdScanParser.parse(raw)) {
@@ -246,11 +252,19 @@ private class BarcodeAnalyzer(
     private var stopped = false
 
     @Volatile
+    private var paused = false
+
+    @Volatile
     private var awaitingMainThread = false
 
     /** 停止分析，用于已识别到有效结果或 native 解码失败。 */
     fun stopAnalyzing() {
         stopped = true
+    }
+
+    /** 临时暂停分析，用于正在解码本地图片。 */
+    fun setPaused(value: Boolean) {
+        paused = value
     }
 
     /** 恢复分析，用于无效码冷却结束。 */
@@ -259,7 +273,7 @@ private class BarcodeAnalyzer(
     }
 
     override fun analyze(image: ImageProxy) {
-        if (stopped || awaitingMainThread) {
+        if (stopped || paused || awaitingMainThread) {
             image.close()
             return
         }

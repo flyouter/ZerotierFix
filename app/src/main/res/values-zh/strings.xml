@@ -249,4 +249,9 @@
     <string name="scan_invalid_qr">该二维码不是受支持的网络邀请码。</string>
     <string name="scan_invalid_network_id">二维码中的网络 ID 无效（需为 16 位十六进制字符）。</string>
     <string name="scan_result_applied">已填入网络 ID，请确认后点击“添加网络”。</string>
+    <string name="cd_pick_image">从相册选择二维码</string>
+    <string name="scan_image_decoding">正在识别图片…</string>
+    <string name="scan_image_no_qr">未在图片中识别到二维码。</string>
+    <string name="scan_image_decode_failed">无法读取该图片，请换一张。</string>
+    <string name="scan_image_picker_unavailable">无法打开图片选择器。</string>
 </resources>

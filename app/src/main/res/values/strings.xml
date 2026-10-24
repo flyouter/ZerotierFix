@@ -251,4 +251,9 @@
     <string name="scan_invalid_qr">This QR code is not a supported network invite code.</string>
     <string name="scan_invalid_network_id">The QR code does not contain a valid 16-character network ID.</string>
     <string name="scan_result_applied">Network ID filled in. Review it and tap Add Network.</string>
+    <string name="cd_pick_image">Pick a QR code image</string>
+    <string name="scan_image_decoding">Reading image…</string>
+    <string name="scan_image_no_qr">No QR code found in this image.</string>
+    <string name="scan_image_decode_failed">Couldn\'t read this image. Try another one.</string>
+    <string name="scan_image_picker_unavailable">Couldn\'t open the image picker.</string>
 </resources>
