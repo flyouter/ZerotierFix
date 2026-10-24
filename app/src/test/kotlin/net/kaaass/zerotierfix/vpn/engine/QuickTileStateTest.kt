@@ -54,7 +54,7 @@ class QuickTileStateTest {
                 networksLoaded = false,
                 networkCount = 0,
                 serviceState = ServiceState.STOPPED,
-                operation = QuickTileOperation.IDLE
+                desiredConnected = null
             )
         )
     }
@@ -63,11 +63,15 @@ class QuickTileStateTest {
     fun `没有网络且服务未运行时不可用`() {
         assertEquals(
             QuickTileStatus.UNAVAILABLE,
-            mapQuickTileStatus(true, 0, ServiceState.STOPPED, QuickTileOperation.IDLE)
+            mapQuickTileStatus(true, 0, ServiceState.STOPPED, null)
         )
         assertEquals(
             QuickTileStatus.UNAVAILABLE,
-            mapQuickTileStatus(true, 0, ServiceState.UNKNOWN, QuickTileOperation.IDLE)
+            mapQuickTileStatus(true, 0, ServiceState.UNKNOWN, null)
+        )
+        assertEquals(
+            QuickTileStatus.UNAVAILABLE,
+            mapQuickTileStatus(true, 0, ServiceState.STOPPED, true)
         )
     }
 
@@ -75,43 +79,67 @@ class QuickTileStateTest {
     fun `没有网络但服务仍在运行时允许关闭`() {
         assertEquals(
             QuickTileStatus.ACTIVE,
-            mapQuickTileStatus(true, 0, ServiceState.RUNNING, QuickTileOperation.IDLE)
+            mapQuickTileStatus(true, 0, ServiceState.RUNNING, null)
+        )
+        assertEquals(
+            QuickTileStatus.INACTIVE,
+            mapQuickTileStatus(true, 0, ServiceState.RUNNING, false)
         )
         assertEquals(
             QuickTileStatus.CONNECTING,
-            mapQuickTileStatus(true, 0, ServiceState.STARTING, QuickTileOperation.IDLE)
+            mapQuickTileStatus(true, 0, ServiceState.STARTING, null)
         )
     }
 
     @Test
-    fun `服务状态映射`() {
+    fun `期望连接时立即显示连接中或已连接`() {
         assertEquals(
             QuickTileStatus.CONNECTING,
-            mapQuickTileStatus(true, 1, ServiceState.STARTING, QuickTileOperation.IDLE)
+            mapQuickTileStatus(true, 1, ServiceState.STOPPED, true)
+        )
+        assertEquals(
+            QuickTileStatus.CONNECTING,
+            mapQuickTileStatus(true, 1, ServiceState.STARTING, true)
         )
         assertEquals(
             QuickTileStatus.ACTIVE,
-            mapQuickTileStatus(true, 1, ServiceState.RUNNING, QuickTileOperation.IDLE)
-        )
-        assertEquals(
-            QuickTileStatus.INACTIVE,
-            mapQuickTileStatus(true, 1, ServiceState.STOPPED, QuickTileOperation.IDLE)
-        )
-        assertEquals(
-            QuickTileStatus.INACTIVE,
-            mapQuickTileStatus(true, 1, ServiceState.UNKNOWN, QuickTileOperation.IDLE)
+            mapQuickTileStatus(true, 1, ServiceState.RUNNING, true)
         )
     }
 
     @Test
-    fun `进行中的操作优先于服务状态`() {
+    fun `期望断开时立即显示未连接`() {
         assertEquals(
-            QuickTileStatus.CONNECTING,
-            mapQuickTileStatus(true, 0, ServiceState.STOPPED, QuickTileOperation.CONNECTING)
+            QuickTileStatus.INACTIVE,
+            mapQuickTileStatus(true, 1, ServiceState.RUNNING, false)
         )
         assertEquals(
             QuickTileStatus.INACTIVE,
-            mapQuickTileStatus(true, 1, ServiceState.RUNNING, QuickTileOperation.DISCONNECTING)
+            mapQuickTileStatus(true, 1, ServiceState.STARTING, false)
+        )
+        assertEquals(
+            QuickTileStatus.INACTIVE,
+            mapQuickTileStatus(true, 1, ServiceState.STOPPED, false)
+        )
+    }
+
+    @Test
+    fun `没有显式意图时跟随服务状态`() {
+        assertEquals(
+            QuickTileStatus.ACTIVE,
+            mapQuickTileStatus(true, 1, ServiceState.RUNNING, null)
+        )
+        assertEquals(
+            QuickTileStatus.CONNECTING,
+            mapQuickTileStatus(true, 1, ServiceState.STARTING, null)
+        )
+        assertEquals(
+            QuickTileStatus.INACTIVE,
+            mapQuickTileStatus(true, 1, ServiceState.STOPPED, null)
+        )
+        assertEquals(
+            QuickTileStatus.INACTIVE,
+            mapQuickTileStatus(true, 1, ServiceState.UNKNOWN, null)
         )
     }
 

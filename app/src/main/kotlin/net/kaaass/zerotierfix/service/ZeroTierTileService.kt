@@ -8,6 +8,7 @@ import android.net.VpnService
 import android.os.Build
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
+import android.util.Log
 import android.widget.Toast
 
 import dagger.hilt.android.AndroidEntryPoint
@@ -70,44 +71,53 @@ class ZeroTierTileService : TileService() {
 
     override fun onClick() {
         super.onClick()
-        when (controller.currentStatus()) {
-            QuickTileStatus.UNAVAILABLE -> toast(R.string.quick_tile_toast_no_network)
-            QuickTileStatus.CONNECTING -> {
-                // 控制器空闲时表示服务正在启动，此时点击用于取消连接。
-                if (!controller.isBusy) {
-                    controller.disconnect()
-                }
-            }
-            QuickTileStatus.ACTIVE -> controller.disconnect()
-            QuickTileStatus.INACTIVE -> connectFromTile()
+        if (controller.currentStatus() == QuickTileStatus.UNAVAILABLE) {
+            toast(R.string.quick_tile_toast_no_network)
+            return
         }
-    }
-
-    /**
-     * 处理未连接状态下的点击：选择目标网络并打开授权/连接页。
-     *
-     * 连接统一经由前台透明 Activity 发起：Android 12+ 禁止后台应用直接
-     * `startService`，磁贴点击时进程可能仍被视为后台。
-     */
-    private fun connectFromTile() {
         if (!controller.isLoaded) {
             controller.refresh()
             toast(R.string.quick_tile_toast_loading)
             return
         }
+
+        // 点击只翻转期望状态并立即更新磁贴；实际启停由后台收敛循环完成。
+        val wantConnected = controller.toggle()
+        if (!wantConnected) {
+            // 断开不需要前台页面，直接在后台收敛。
+            controller.startSettle()
+            return
+        }
+
         val targetNetworkId = controller.currentTargetNetworkId()
         if (targetNetworkId == null) {
+            controller.abandonIntent()
             toast(R.string.quick_tile_toast_no_network)
             return
         }
-        if (VpnService.prepare(this) == null) {
-            // 已授权：普通 startActivity 让透明页留在通知栏后面完成服务启动，
-            // 磁贴面板保持展开；startActivityAndCollapse 会收起面板并跳到桌面。
-            launchConnectActivity(targetNetworkId)
-        } else if (isLocked) {
-            unlockAndRun { launchConsentActivity(targetNetworkId) }
+        if (isLocked) {
+            unlockAndRun { launchForConnect(targetNetworkId) }
         } else {
-            launchConsentActivity(targetNetworkId)
+            launchForConnect(targetNetworkId)
+        }
+    }
+
+    /**
+     * 启动前台页面驱动连接；连接需要保持前台才能通过系统的后台启动限制。
+     */
+    private fun launchForConnect(networkId: Long) {
+        try {
+            if (VpnService.prepare(this) == null) {
+                // 已授权：普通 startActivity 让透明页留在通知栏后面完成服务启动，
+                // 磁贴面板保持展开；startActivityAndCollapse 会收起面板并跳到桌面。
+                launchConnectActivity(networkId)
+            } else {
+                launchConsentActivity(networkId)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to launch connect activity", e)
+            controller.abandonIntent()
+            toast(R.string.toast_connect_failed)
         }
     }
 
@@ -188,5 +198,9 @@ class ZeroTierTileService : TileService() {
 
     private fun toast(messageRes: Int) {
         Toast.makeText(this, messageRes, Toast.LENGTH_SHORT).show()
+    }
+
+    companion object {
+        private const val TAG = "ZeroTierTileService"
     }
 }

@@ -69,7 +69,7 @@
             android:name=".service.VpnConsentActivity"
             android:excludeFromRecents="true"
             android:exported="false"
-            android:launchMode="standard"
+            android:launchMode="singleTop"
             android:taskAffinity="net.kaaass.zerotierfix.consent"
             android:theme="@style/Theme.ZerotierFix.Transparent" />
 
