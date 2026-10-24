@@ -27,6 +27,8 @@ import net.kaaass.zerotierfix.ui.common.DnsField
 import net.kaaass.zerotierfix.ui.common.UiText
 import net.kaaass.zerotierfix.ui.common.hasInvalidDns
 import net.kaaass.zerotierfix.ui.common.isValidDnsAddress
+import net.kaaass.zerotierfix.util.NetworkIdScanParser
+import net.kaaass.zerotierfix.util.NetworkIdScanResult
 import net.kaaass.zerotierfix.util.NetworkIdUtils
 
 import javax.inject.Inject
@@ -79,6 +81,23 @@ class JoinNetworkViewModel @Inject constructor(
             )
         }
     }
+
+    /**
+     * 处理扫码得到的网络 ID。
+     *
+     * 成功时仅填入输入框，不自动提交；DNS 模式与路由选项保持用户当前选择。
+     *
+     * @param raw 扫码原始内容
+     * @return 是否成功填入
+     */
+    fun onScanResult(raw: String): Boolean =
+        when (val result = NetworkIdScanParser.parse(raw)) {
+            is NetworkIdScanResult.Success -> {
+                onNetworkIdChanged(result.networkId)
+                true
+            }
+            else -> false
+        }
 
     /**
      * 更新“通过 ZeroTier 路由”选项。

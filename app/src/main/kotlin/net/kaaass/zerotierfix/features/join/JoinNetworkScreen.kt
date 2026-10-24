@@ -20,6 +20,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -33,6 +35,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -61,6 +64,7 @@ import net.kaaass.zerotierfix.ui.theme.ZerotierFixTheme
  * @param onDnsModeChanged DNS 模式变化
  * @param onDnsChanged 自定义 DNS 输入变化
  * @param onJoin 提交
+ * @param onScanClick 点击扫码
  * @param onBack 返回
  * @param modifier 修饰符
  */
@@ -74,6 +78,7 @@ fun JoinNetworkScreen(
     onDnsModeChanged: (DNSMode) -> Unit,
     onDnsChanged: (DnsField, String) -> Unit,
     onJoin: () -> Unit,
+    onScanClick: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -122,6 +127,17 @@ fun JoinNetworkScreen(
                     }
                 } else {
                     null
+                },
+                trailingIcon = {
+                    IconButton(
+                        onClick = onScanClick,
+                        enabled = !state.isSubmitting
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_qr_code_scanner),
+                            contentDescription = stringResource(R.string.cd_scan_network_id)
+                        )
+                    }
                 },
                 keyboardOptions = KeyboardOptions(
                     keyboardType = KeyboardType.Ascii,
@@ -349,6 +365,7 @@ private fun JoinNetworkScreenPreview() {
             onDnsModeChanged = {},
             onDnsChanged = { _, _ -> },
             onJoin = {},
+            onScanClick = {},
             onBack = {}
         )
     }
@@ -370,6 +387,7 @@ private fun JoinNetworkScreenDarkPreview() {
             onDnsModeChanged = {},
             onDnsChanged = { _, _ -> },
             onJoin = {},
+            onScanClick = {},
             onBack = {}
         )
     }

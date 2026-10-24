@@ -145,8 +145,12 @@ fun ZeroTierNavHost(navController: NavHostController = rememberNavController()) 
                                 onOpenMoon = { navController.navigate(ZeroTierRoutes.MOON) }
                             )
                         }
-                        composable(ZeroTierRoutes.JOIN) {
-                            JoinNetworkRoute(onBack = { navController.popBackStack() })
+                        composable(ZeroTierRoutes.JOIN) { entry ->
+                            JoinNetworkRoute(
+                                onBack = { navController.popBackStack() },
+                                onScanRequested = { navController.navigate(ZeroTierRoutes.SCAN) },
+                                savedStateHandle = entry.savedStateHandle
+                            )
                         }
                         composable(
                             route = ZeroTierRoutes.SCAN,
