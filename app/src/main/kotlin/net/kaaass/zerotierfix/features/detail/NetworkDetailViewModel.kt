@@ -86,13 +86,21 @@ class NetworkDetailViewModel @Inject constructor(
                     isNotFound = false
                 )
             }
-            // 复刻旧实现中 setChecked(true) 触发的重配副作用，仅一次
-            if (config.isRouteViaZeroTier) {
+            // 复刻旧实现中 setChecked(true) 触发的重配副作用，仅一次；
+            // 服务未运行时无需为一次重配请求创建服务。
+            val serviceState = vpnEngine.serviceState.value
+            if (config.isRouteViaZeroTier && serviceState == ServiceState.RUNNING) {
                 vpnEngine.reconfigure(networkId)
             }
-            when (val result = vpnEngine.virtualNetworkConfig(networkId)) {
-                is VpnCommandResult.Success -> applyVirtualConfig(result.value)
-                else -> Unit
+            // 优先使用服务写入进程内 store 的实时配置，避免额外的 binder 查询。
+            val cachedConfig = vpnEngine.virtualNetworkConfigs.value?.get(networkId)
+            if (cachedConfig != null) {
+                applyVirtualConfig(cachedConfig)
+            } else if (serviceState == ServiceState.RUNNING) {
+                when (val result = vpnEngine.virtualNetworkConfig(networkId)) {
+                    is VpnCommandResult.Success -> applyVirtualConfig(result.value)
+                    else -> Unit
+                }
             }
         }
     }
@@ -121,7 +129,10 @@ class NetworkDetailViewModel @Inject constructor(
             withContext(ioDispatcher) {
                 networkRepository.updateRouteViaZeroTier(networkId, enabled)
             }
-            vpnEngine.reconfigure(networkId)
+            // 服务未运行时重配没有意义，且会无谓创建服务。
+            if (vpnEngine.serviceState.value == ServiceState.RUNNING) {
+                vpnEngine.reconfigure(networkId)
+            }
         }
     }
 
@@ -171,7 +182,7 @@ class NetworkDetailViewModel @Inject constructor(
         if (config.networkId != networkId) {
             return
         }
-        val disableIpv6 = settingsRepository.isIpv6Disabled
+        val disableIpv6 = settingsRepository.settings.value.isIpv6Disabled
         _uiState.update { state ->
             state.copy(
                 virtualConfig = config,

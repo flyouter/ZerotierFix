@@ -17,6 +17,7 @@ import kotlinx.coroutines.launch
 
 import net.kaaass.zerotierfix.R
 import net.kaaass.zerotierfix.ui.common.UiText
+import net.kaaass.zerotierfix.vpn.engine.ServiceState
 import net.kaaass.zerotierfix.vpn.engine.VpnCommandResult
 import net.kaaass.zerotierfix.vpn.engine.VpnEngine
 
@@ -76,6 +77,18 @@ class PeerListViewModel @Inject constructor(
      * 请求 Peer 列表并更新页面状态。
      */
     private suspend fun requestPeers() {
+        val serviceState = vpnEngine.serviceState.value
+        if (serviceState != ServiceState.RUNNING && serviceState != ServiceState.STARTING) {
+            _uiState.update {
+                it.copy(
+                    isRefreshing = false,
+                    hasLoaded = true,
+                    isLoading = false,
+                    error = PeerListError.SERVICE_NOT_RUNNING
+                )
+            }
+            return
+        }
         when (val result = vpnEngine.loadPeers()) {
             is VpnCommandResult.Success -> _uiState.update {
                 it.copy(
