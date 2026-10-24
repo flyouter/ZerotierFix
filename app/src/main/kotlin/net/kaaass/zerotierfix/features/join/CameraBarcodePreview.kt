@@ -5,18 +5,16 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.util.Size
 
-import androidx.camera.compose.CameraXViewfinder
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
-import androidx.camera.core.SurfaceRequest
 import androidx.camera.core.resolutionselector.ResolutionSelector
 import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.lifecycle.awaitInstance
-import androidx.camera.viewfinder.core.ImplementationMode
+import androidx.camera.view.PreviewView
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -28,6 +26,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 
@@ -38,7 +37,6 @@ import net.kaaass.zerotierfix.util.NetworkIdScanParser
 import net.kaaass.zerotierfix.util.NetworkIdScanResult
 
 import java.util.concurrent.Executors
-import java.util.concurrent.atomic.AtomicBoolean
 
 import zxingcpp.BarcodeReader
 
@@ -60,8 +58,7 @@ enum class CameraScanError {
 /**
  * CameraX 相机预览与二维码解码。
  *
- * 预览使用 `CameraXViewfinder` 的 EMBEDDED 模式（TextureView），保证取景框等
- * Compose 覆盖层能显示在预览之上。
+ * 预览使用 `PreviewView`（SurfaceView 优先），兼容性优于 Compose Viewfinder。
  *
  * @param torchOn 是否开启手电筒
  * @param onTorchAvailabilityChanged 手电筒可用性回调
@@ -96,12 +93,28 @@ fun CameraBarcodePreview(
     val analyzer = remember {
         BarcodeAnalyzer { raw -> resultChannel.trySend(raw).isSuccess }
     }
-    val disposed = remember { AtomicBoolean(false) }
-
-    var surfaceRequest by remember { mutableStateOf<SurfaceRequest?>(null) }
     var camera by remember { mutableStateOf<Camera?>(null) }
 
-    val preview = remember { Preview.Builder().build() }
+    val previewView = remember(context) {
+        PreviewView(context).apply {
+            implementationMode = PreviewView.ImplementationMode.PERFORMANCE
+            scaleType = PreviewView.ScaleType.FILL_CENTER
+        }
+    }
+    val preview = remember {
+        Preview.Builder()
+            .setResolutionSelector(
+                ResolutionSelector.Builder()
+                    .setResolutionStrategy(
+                        ResolutionStrategy(
+                            Size(640, 480),
+                            ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER
+                        )
+                    )
+                    .build()
+            )
+            .build()
+    }
     val analysis = remember {
         ImageAnalysis.Builder()
             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
@@ -109,7 +122,7 @@ fun CameraBarcodePreview(
                 ResolutionSelector.Builder()
                     .setResolutionStrategy(
                         ResolutionStrategy(
-                            Size(1280, 720),
+                            Size(640, 480),
                             ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER
                         )
                     )
@@ -133,11 +146,7 @@ fun CameraBarcodePreview(
             if (selector == null) {
                 currentOnCameraError(CameraScanError.NO_CAMERA)
             } else {
-                preview.setSurfaceProvider { request ->
-                    if (!disposed.get()) {
-                        surfaceRequest = request
-                    }
-                }
+                preview.setSurfaceProvider(previewView.surfaceProvider)
                 analysis.setAnalyzer(analysisExecutor, analyzer)
                 runCatching {
                     camera = provider.bindToLifecycle(
@@ -153,13 +162,12 @@ fun CameraBarcodePreview(
         }
 
         onDispose {
-            disposed.set(true)
             analyzer.stopAnalyzing()
             analysis.clearAnalyzer()
             camera?.cameraControl?.enableTorch(false)
             camera = null
+            preview.setSurfaceProvider(null)
             provider?.unbind(preview, analysis)
-            surfaceRequest = null
         }
     }
 
@@ -195,14 +203,10 @@ fun CameraBarcodePreview(
         }
     }
 
-    val currentRequest = surfaceRequest
-    if (currentRequest != null) {
-        CameraXViewfinder(
-            surfaceRequest = currentRequest,
-            modifier = modifier,
-            implementationMode = ImplementationMode.EMBEDDED
-        )
-    }
+    AndroidView(
+        factory = { previewView },
+        modifier = modifier
+    )
 }
 
 /**

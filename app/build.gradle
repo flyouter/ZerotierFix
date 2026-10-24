@@ -107,9 +107,11 @@ dependencies {
     testImplementation 'org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0'
 
     // 相机与二维码扫描
-    implementation 'androidx.camera:camera-core:1.6.2'
-    implementation 'androidx.camera:camera-camera2:1.6.2'
-    implementation 'androidx.camera:camera-lifecycle:1.6.2'
-    implementation 'androidx.camera:camera-compose:1.6.2'
+    // 1.6.x 起 camera2 后端改为 camera2-pipe，在部分 legacy HAL 设备上无法出帧，
+    // 因此固定在 1.5.2（经典 camera2 实现，也是 zxing-cpp 的依赖版本）
+    implementation 'androidx.camera:camera-core:1.5.2'
+    implementation 'androidx.camera:camera-camera2:1.5.2'
+    implementation 'androidx.camera:camera-lifecycle:1.5.2'
+    implementation 'androidx.camera:camera-view:1.5.2'
     implementation 'io.github.zxing-cpp:android:3.1.1'
 }
