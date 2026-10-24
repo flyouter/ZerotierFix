@@ -25,6 +25,8 @@
    会话配置 5 秒超时；1.5.2 / 1.6.2 均复现，是 Viewfinder 的预览通道问题，不是版本问题。
    将来若迁回，只改 `CameraBarcodePreview.kt` 的视图层，其余不用动。
 4. **权限**：只用系统自带弹窗（`RequestPermission`），不要自绘权限对话框；永久拒绝时跳应用设置。
+5. **相册选图**：图片解码依赖 `ImageDecoder`（minSdk 29，自动处理 EXIF 方向）与系统
+   Photo Picker（`PickVisualMedia`，无需存储权限）；不引入 exifinterface 或图片库。
 
 ## 升级后验证
 
