@@ -13,6 +13,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 import net.kaaass.zerotierfix.data.repository.NetworkRepository
+import net.kaaass.zerotierfix.service.ServiceLiveness
+import net.kaaass.zerotierfix.service.VpnNotificationController
+import net.kaaass.zerotierfix.service.ZeroTierOneService
 
 import javax.inject.Inject
 import javax.inject.Provider
@@ -43,6 +46,12 @@ class ZerotierFixApplication : Application() {
                     .penaltyLog()
                     .build()
             )
+        }
+
+        // 新进程里不可能存在仍在运行的 VPN 服务；清理旧版本或已结束进程
+        // 遗留的常驻通知，避免用户看到“已连接”假象。
+        if (!ServiceLiveness.isRunning(this, ZeroTierOneService::class.java)) {
+            VpnNotificationController.cancelStale(this)
         }
 
         // 在 IO 上预热偏好与数据库，避免首次读取与首帧组合重叠。

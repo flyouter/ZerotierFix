@@ -1,5 +1,6 @@
 package net.kaaass.zerotierfix.service
 
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -17,22 +18,28 @@ import net.kaaass.zerotierfix.util.Constants
 
 /**
  * 构建并显示 VPN 连接状态通知。
+ *
+ * 通知同时作为前台服务通知使用：服务被销毁或进程结束时由系统移除，
+ * 不再依赖 `cancel()` 是否被调用到。
  */
 class VpnNotificationController(private val service: VpnService) {
 
-    private var notificationManager: NotificationManager? = null
-
     /**
-     * 显示已连接通知。
+     * 构建已连接通知。
      *
      * @param networkIdStr 网络 ID 的字符串形式；可能为 `null`
+     * @return 通知对象
      */
-    fun showConnected(networkIdStr: String?) {
+    fun buildConnected(networkIdStr: String?): Notification {
         val manager = getNotificationManager()
         createChannelIfNeeded(manager)
-        val notification = NotificationCompat.Builder(this.service, Constants.CHANNEL_ID)
+        return NotificationCompat.Builder(this.service, Constants.CHANNEL_ID)
             .setPriority(1)
             .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setForegroundServiceBehavior(
+                NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE
+            )
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(this.service.getString(R.string.notification_title_connected))
             .setContentText(
@@ -45,14 +52,27 @@ class VpnNotificationController(private val service: VpnService) {
             )
             .setContentIntent(createContentIntent())
             .build()
-        manager.notify(NOTIFICATION_TAG, notification)
+    }
+
+    /**
+     * 以普通通知形式显示已连接状态。
+     *
+     * 仅用于 `startForeground` 失败时的降级路径。
+     *
+     * @param networkIdStr 网络 ID 的字符串形式；可能为 `null`
+     */
+    fun notifyConnected(networkIdStr: String?) {
+        getNotificationManager().notify(NOTIFICATION_ID, buildConnected(networkIdStr))
     }
 
     /**
      * 取消已显示的通知。
+     *
+     * 每次都重新获取 [NotificationManager]，不依赖任何缓存字段，
+     * 保证服务实例重建后也能清理上一个实例留下的通知。
      */
     fun cancel() {
-        this.notificationManager?.cancel(NOTIFICATION_TAG)
+        getNotificationManager().cancel(NOTIFICATION_ID)
     }
 
     /**
@@ -60,15 +80,8 @@ class VpnNotificationController(private val service: VpnService) {
      *
      * @return 通知管理器，非空
      */
-    private fun getNotificationManager(): NotificationManager {
-        var manager = this.notificationManager
-        if (manager == null) {
-            manager = this.service
-                .getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            this.notificationManager = manager
-        }
-        return manager
-    }
+    private fun getNotificationManager(): NotificationManager =
+        this.service.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
     /**
      * 在 Android 8.0 及以上创建通知渠道。
@@ -111,6 +124,18 @@ class VpnNotificationController(private val service: VpnService) {
     }
 
     companion object {
-        private const val NOTIFICATION_TAG = 5919812
+        /** 连接状态通知 ID，同时作为前台服务通知 ID。 */
+        const val NOTIFICATION_ID = 5919812
+
+        /**
+         * 清理可能由旧版本或已结束进程遗留的通知。
+         *
+         * @param context 任意 Context
+         */
+        fun cancelStale(context: Context) {
+            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE)
+                as? NotificationManager ?: return
+            manager.cancel(NOTIFICATION_ID)
+        }
     }
 }
