@@ -108,9 +108,11 @@ class TunnelConfigurator(
     /**
      * 应用指定网络的最新配置。
      *
+     * 网络刚加入、尚未分配地址时不会调用 `establish()`，而是等待下一次配置更新。
+     *
      * @param network 数据库中的网络摘要
      * @param disableIpv6 是否禁用 IPv6
-     * @return 配置成功返回 `true`
+     * @return 配置成功返回 `true`；无可用地址或建立失败返回 `false`
      */
     fun configure(network: NetworkSummary, disableIpv6: Boolean): Boolean {
         val node = host.currentNode ?: return false
@@ -123,6 +125,28 @@ class TunnelConfigurator(
         val virtualNetworkConfig = host.readVirtualNetworkConfig(networkId) ?: return false
         val adapter = host.currentAdapter ?: return false
 
+        // Android 13+ 要求 establish() 前至少添加一个地址。网络刚加入时
+        // 可能还没有分配地址，此时先不重建隧道，等待下一次 CONFIG_UPDATE。
+        val assignedAddresses = virtualNetworkConfig.assignedAddresses
+        Log.i(TAG, "address length: " + assignedAddresses.size)
+        val vpnAddresses = assignedAddresses.mapNotNull { vpnAddress ->
+            if (disableIpv6 && vpnAddress.address is Inet6Address) {
+                null
+            } else {
+                val route = InetAddressUtils.addressToRoute(vpnAddress.address, vpnAddress.port)
+                if (route == null) {
+                    Log.e(TAG, "NULL route calculated!")
+                    null
+                } else {
+                    vpnAddress to route
+                }
+            }
+        }
+        if (vpnAddresses.isEmpty()) {
+            Log.i(TAG, "No usable assigned address; defer tunnel configuration")
+            return false
+        }
+
         // 重启 TUN TAP
         host.restartTunnelAdapter()
         adapter.clearRouteMap()
@@ -133,57 +157,47 @@ class TunnelConfigurator(
         // 配置 VPN
         Log.i(TAG, "Configuring VpnService.Builder")
         val builder = host.vpnService.Builder()
-        val assignedAddresses = virtualNetworkConfig.assignedAddresses
-        Log.i(TAG, "address length: " + assignedAddresses.size)
         val isRouteViaZeroTier = networkConfig.isRouteViaZeroTier
 
         // 遍历 ZT 网络中当前设备的 IP 地址，组播配置
-        for (vpnAddress in assignedAddresses) {
+        for ((vpnAddress, route) in vpnAddresses) {
             Log.d(
                 TAG,
                 "Adding VPN Address: " + vpnAddress.address +
                     " Mac: " + SdkStringUtils.macAddressToString(virtualNetworkConfig.mac)
             )
             val rawAddress = vpnAddress.address.address
+            val address = vpnAddress.address
+            val port = vpnAddress.port
 
-            if (!disableIpv6 || vpnAddress.address !is Inet6Address) {
-                val address = vpnAddress.address
-                val port = vpnAddress.port
-                val route = InetAddressUtils.addressToRoute(address, port)
-                if (route == null) {
-                    Log.e(TAG, "NULL route calculated!")
-                    continue
-                }
-
-                // 计算 VPN 地址相关的组播 MAC 与 ADI
-                val multicastGroup: Long
-                val multicastAdi: Long
-                if (rawAddress.size == 4) {
-                    // IPv4
-                    multicastGroup = InetAddressUtils.BROADCAST_MAC_ADDRESS
-                    multicastAdi = ByteBuffer.wrap(rawAddress).int.toLong()
-                } else {
-                    // IPv6
-                    multicastGroup = ByteBuffer.wrap(
-                        byteArrayOf(
-                            0, 0, 0x33, 0x33, 0xFF.toByte(),
-                            rawAddress[13], rawAddress[14], rawAddress[15]
-                        )
-                    ).long
-                    multicastAdi = 0L
-                }
-
-                // 订阅组播并添加至 TUN TAP 路由
-                val result = node.multicastSubscribe(networkId, multicastGroup, multicastAdi)
-                if (result != ResultCode.RESULT_OK) {
-                    Log.e(TAG, "Error joining multicast group")
-                } else {
-                    Log.d(TAG, "Joined multicast group")
-                }
-                builder.addAddress(address, port)
-                builder.addRoute(route, port)
-                adapter.addRouteAndNetwork(Route(route, port), networkId)
+            // 计算 VPN 地址相关的组播 MAC 与 ADI
+            val multicastGroup: Long
+            val multicastAdi: Long
+            if (rawAddress.size == 4) {
+                // IPv4
+                multicastGroup = InetAddressUtils.BROADCAST_MAC_ADDRESS
+                multicastAdi = ByteBuffer.wrap(rawAddress).int.toLong()
+            } else {
+                // IPv6
+                multicastGroup = ByteBuffer.wrap(
+                    byteArrayOf(
+                        0, 0, 0x33, 0x33, 0xFF.toByte(),
+                        rawAddress[13], rawAddress[14], rawAddress[15]
+                    )
+                ).long
+                multicastAdi = 0L
             }
+
+            // 订阅组播并添加至 TUN TAP 路由
+            val result = node.multicastSubscribe(networkId, multicastGroup, multicastAdi)
+            if (result != ResultCode.RESULT_OK) {
+                Log.e(TAG, "Error joining multicast group")
+            } else {
+                Log.d(TAG, "Joined multicast group")
+            }
+            builder.addAddress(address, port)
+            builder.addRoute(route, port)
+            adapter.addRouteAndNetwork(Route(route, port), networkId)
         }
 
         // 遍历网络的路由规则，将网络负责路由的地址路由至 VPN
