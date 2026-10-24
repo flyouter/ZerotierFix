@@ -164,7 +164,6 @@
     <string name="cd_back">返回</string>
     <string name="cd_more_options">更多操作</string>
     <string name="cd_add_moon">添加 Moon</string>
-    <string name="cd_refresh_peers">刷新结点列表</string>
     <string name="cd_network_switch">%1$s 的网络开关</string>
     <string name="cd_copy_value">复制%1$s</string>
 

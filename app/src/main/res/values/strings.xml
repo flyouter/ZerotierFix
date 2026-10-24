@@ -166,7 +166,6 @@
     <string name="cd_back">Back</string>
     <string name="cd_more_options">More options</string>
     <string name="cd_add_moon">Add Moon</string>
-    <string name="cd_refresh_peers">Refresh peers</string>
     <string name="cd_network_switch">Network switch for %1$s</string>
     <string name="cd_copy_value">Copy %1$s</string>
 

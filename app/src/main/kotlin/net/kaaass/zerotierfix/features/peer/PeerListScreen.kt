@@ -17,10 +17,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Person
-import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
@@ -56,7 +53,7 @@ import net.kaaass.zerotierfix.util.StringUtils
  *
  * @param state 页面状态
  * @param snackbarHostState Snackbar 宿主状态
- * @param onRefresh 下拉刷新 / 顶栏刷新
+ * @param onRefresh 下拉刷新
  * @param onRetry 重试
  * @param modifier 修饰符
  */
@@ -74,15 +71,7 @@ fun PeerListScreen(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             ZerotierTopBar(
-                title = stringResource(R.string.peer_list),
-                actions = {
-                    IconButton(onClick = onRefresh) {
-                        Icon(
-                            imageVector = Icons.Outlined.Refresh,
-                            contentDescription = stringResource(R.string.cd_refresh_peers)
-                        )
-                    }
-                }
+                title = stringResource(R.string.peer_list)
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }
