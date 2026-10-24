@@ -181,14 +181,18 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
     }
 
     override fun onBind(intent: Intent?): IBinder {
-        Log.d(TAG, "Bound by: " + packageManager.getNameForUid(Binder.getCallingUid()))
+        if (Log.isLoggable(TAG, Log.VERBOSE)) {
+            Log.v(TAG, "Bound by: " + packageManager.getNameForUid(Binder.getCallingUid()))
+        }
         this.bindCount++
         logBindCount()
         return this.mBinder
     }
 
     override fun onUnbind(intent: Intent?): Boolean {
-        Log.d(TAG, "Unbound by: " + packageManager.getNameForUid(Binder.getCallingUid()))
+        if (Log.isLoggable(TAG, Log.VERBOSE)) {
+            Log.v(TAG, "Unbound by: " + packageManager.getNameForUid(Binder.getCallingUid()))
+        }
         this.bindCount--
         logBindCount()
         return false
@@ -215,6 +219,7 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
         if (intent == null) {
             Log.e(TAG, "NULL intent.  Cannot start")
             markServiceStopped()
+            stopSelf(startId)
             return Service.START_NOT_STICKY
         }
         this.mStartID = startId
@@ -231,6 +236,7 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
             if (lastActivatedNetworkId == null) {
                 Log.e(TAG, "Couldn't find last activated connection")
                 markServiceStopped()
+                stopSelf(startId)
                 return Service.START_NOT_STICKY
             }
             targetNetworkId = lastActivatedNetworkId
@@ -296,6 +302,7 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
                     } else {
                         Log.e(TAG, "Error starting ZT1 Node: $result")
                         markServiceStopped()
+                        stopSelf(startId)
                         return Service.START_NOT_STICKY
                     }
 
@@ -327,6 +334,7 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
             } catch (e: Exception) {
                 Log.e(TAG, e.toString(), e)
                 markServiceStopped()
+                stopSelf(startId)
                 return Service.START_NOT_STICKY
             }
         }

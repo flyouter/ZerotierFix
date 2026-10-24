@@ -11,9 +11,6 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -46,30 +43,11 @@ class AndroidVpnServiceCommands @Inject constructor(
 ) : VpnServiceCommands {
 
     private val mutex = Mutex()
-    private val scope = CoroutineScope(SupervisorJob() + dispatcher)
 
     @Volatile
     private var boundService: ZeroTierOneService? = null
 
     private var connection: ServiceConnection? = null
-
-    init {
-        scope.launch { probe() }
-    }
-
-    override suspend fun probe(): Unit = withContext(dispatcher) {
-        mutex.withLock {
-            val state = store.serviceState.value
-            if (state == ServiceState.RUNNING || state == ServiceState.STARTING) {
-                return@withLock
-            }
-            val service = acquire(PROBE_TIMEOUT_MS)
-            store.setServiceState(
-                if (service != null) ServiceState.RUNNING else ServiceState.STOPPED
-            )
-            release()
-        }
-    }
 
     override suspend fun startService(networkId: Long): Boolean = withContext(dispatcher) {
         mutex.withLock {
@@ -93,14 +71,17 @@ class AndroidVpnServiceCommands @Inject constructor(
 
     override suspend fun stop(): Unit = withContext(dispatcher) {
         mutex.withLock {
-            val service = acquire(STOP_CONNECT_TIMEOUT_MS)
-            if (service != null) {
-                try {
-                    service.stopZeroTier()
-                } catch (e: Exception) {
-                    Log.e(TAG, "stopZeroTier failed", e)
+            val state = store.serviceState.value
+            if (state == ServiceState.RUNNING || state == ServiceState.STARTING) {
+                val service = acquire(STOP_CONNECT_TIMEOUT_MS)
+                if (service != null) {
+                    try {
+                        service.stopZeroTier()
+                    } catch (e: Exception) {
+                        Log.e(TAG, "stopZeroTier failed", e)
+                    }
+                    release()
                 }
-                release()
             }
             try {
                 context.stopService(Intent(context, ZeroTierOneService::class.java))
@@ -209,11 +190,11 @@ class AndroidVpnServiceCommands @Inject constructor(
     }
 
     override suspend fun refreshState(): Unit = withContext(dispatcher) {
-        if (store.serviceState.value == ServiceState.UNKNOWN) {
-            probe()
-        }
         val state = store.serviceState.value
         if (state != ServiceState.RUNNING && state != ServiceState.STARTING) {
+            if (state == ServiceState.UNKNOWN) {
+                store.setServiceState(ServiceState.STOPPED)
+            }
             return@withContext
         }
         mutex.withLock {
@@ -356,7 +337,6 @@ class AndroidVpnServiceCommands @Inject constructor(
 
     companion object {
         private const val TAG = "AndroidVpnCommands"
-        private const val PROBE_TIMEOUT_MS = 300L
         private const val CONNECT_TIMEOUT_MS = 500L
         private const val STOP_CONNECT_TIMEOUT_MS = 500L
     }

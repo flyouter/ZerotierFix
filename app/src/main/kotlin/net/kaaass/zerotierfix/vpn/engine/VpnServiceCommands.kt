@@ -14,11 +14,6 @@ import net.kaaass.zerotierfix.model.dto.VirtualNetworkConfigDto
 interface VpnServiceCommands {
 
     /**
-     * 探测服务是否正在运行，并把结果写入 [VpnStateStore]。
-     */
-    suspend fun probe()
-
-    /**
      * 启动服务并指定要连接的网络。
      *
      * @param networkId 网络 ID

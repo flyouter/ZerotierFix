@@ -1,5 +1,7 @@
 package net.kaaass.zerotierfix.vpn.engine
 
+import dagger.Lazy
+
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 
@@ -15,11 +17,12 @@ import javax.inject.Singleton
  * [VpnEngine] 的默认实现。
  *
  * 状态直接转发 [VpnStateStore]，命令委托给 [VpnServiceCommands]。
+ * 命令层使用 [Lazy] 延迟构造：只读取状态的页面不会触发服务绑定。
  */
 @Singleton
 class VpnEngineImpl @Inject constructor(
     private val store: VpnStateStore,
-    private val commands: VpnServiceCommands
+    private val commands: Lazy<VpnServiceCommands>
 ) : VpnEngine {
 
     override val serviceState: StateFlow<ServiceState> = store.serviceState
@@ -34,35 +37,35 @@ class VpnEngineImpl @Inject constructor(
     override val statusNotices: SharedFlow<VirtualNetworkConfigDto> = store.statusNotices
 
     override suspend fun start(networkId: Long): Boolean =
-        commands.startService(networkId)
+        commands.get().startService(networkId)
 
     override suspend fun leaveAndStop(networkId: Long?) {
         if (networkId != null) {
-            commands.leave(networkId)
+            commands.get().leave(networkId)
         }
-        commands.stop()
+        commands.get().stop()
     }
 
     override suspend fun stop() {
-        commands.stop()
+        commands.get().stop()
     }
 
     override suspend fun orbit(moons: List<MoonOrbitDto>) {
-        commands.orbit(moons)
+        commands.get().orbit(moons)
     }
 
     override suspend fun loadPeers(): VpnCommandResult<List<PeerInfoDto>> =
-        commands.loadPeers()
+        commands.get().loadPeers()
 
     override suspend fun reconfigure(networkId: Long) {
-        commands.reconfigure(networkId)
+        commands.get().reconfigure(networkId)
     }
 
     override suspend fun virtualNetworkConfig(
         networkId: Long
-    ): VpnCommandResult<VirtualNetworkConfigDto> = commands.virtualNetworkConfig(networkId)
+    ): VpnCommandResult<VirtualNetworkConfigDto> = commands.get().virtualNetworkConfig(networkId)
 
     override suspend fun refreshState() {
-        commands.refreshState()
+        commands.get().refreshState()
     }
 }
