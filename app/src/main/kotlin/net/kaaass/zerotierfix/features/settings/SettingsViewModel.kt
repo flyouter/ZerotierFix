@@ -11,6 +11,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -100,9 +101,13 @@ class SettingsViewModel @Inject constructor(
             )
         )
         viewModelScope.launch {
-            val exists = withContext(ioDispatcher) { customPlanetFileExists() }
-            if (!exists && settingsRepository.settings.value.isPlanetUseCustom) {
-                settingsRepository.setPlanetUseCustom(false)
+            // 清理偏好不能随页面销毁丢失，否则会留下“已启用但没有文件”的状态。
+            withContext(NonCancellable + ioDispatcher) {
+                if (!customPlanetFileExists() &&
+                    settingsRepository.settings.value.isPlanetUseCustom
+                ) {
+                    settingsRepository.setPlanetUseCustom(false)
+                }
             }
         }
     }
@@ -128,7 +133,8 @@ class SettingsViewModel @Inject constructor(
         }
         viewModelScope.launch {
             val exists = withContext(ioDispatcher) { customPlanetFileExists() }
-            if (!exists) {
+            // 检查期间用户可能已关闭开关，避免弹出过期的对话框。
+            if (!exists && settingsRepository.settings.value.isPlanetUseCustom) {
                 _uiState.update { it.copy(isPlanetDialogVisible = true) }
             }
         }
@@ -149,9 +155,11 @@ class SettingsViewModel @Inject constructor(
     fun dismissPlanetDialog() {
         _uiState.update { it.copy(isPlanetDialogVisible = false, isUrlDialogVisible = false) }
         viewModelScope.launch {
-            val exists = withContext(ioDispatcher) { customPlanetFileExists() }
-            if (!exists) {
-                settingsRepository.setPlanetUseCustom(false)
+            // 清理偏好不能随页面销毁丢失，否则会留下“已启用但没有文件”的状态。
+            withContext(NonCancellable + ioDispatcher) {
+                if (!customPlanetFileExists()) {
+                    settingsRepository.setPlanetUseCustom(false)
+                }
             }
         }
     }
@@ -173,9 +181,13 @@ class SettingsViewModel @Inject constructor(
     fun dismissUrlDialog() {
         _uiState.update { it.copy(isUrlDialogVisible = false) }
         viewModelScope.launch {
-            val exists = withContext(ioDispatcher) { customPlanetFileExists() }
-            if (!exists && settingsRepository.settings.value.isPlanetUseCustom) {
-                settingsRepository.setPlanetUseCustom(false)
+            // 清理偏好不能随页面销毁丢失，否则会留下“已启用但没有文件”的状态。
+            withContext(NonCancellable + ioDispatcher) {
+                if (!customPlanetFileExists() &&
+                    settingsRepository.settings.value.isPlanetUseCustom
+                ) {
+                    settingsRepository.setPlanetUseCustom(false)
+                }
             }
         }
     }
@@ -327,7 +339,13 @@ class SettingsViewModel @Inject constructor(
      */
     private fun refreshPlanetFileState() {
         viewModelScope.launch {
+            // 以刷新开始时的快照为准，避免把用户检查期间刚打开的开关又关掉。
+            val wasEnabled = settingsRepository.settings.value.isPlanetUseCustom
             val exists = withContext(ioDispatcher) { customPlanetFileExists() }
+            // 自愈：上次清理可能被进程终止打断，避免留下“已启用但没有文件”的状态。
+            if (!exists && wasEnabled) {
+                settingsRepository.setPlanetUseCustom(false)
+            }
             _uiState.update { it.copy(hasCustomPlanetFile = exists) }
         }
     }
