@@ -9,17 +9,17 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
+import kotlinx.coroutines.launch
+
 import net.kaaass.zerotierfix.ui.common.resolve
 
 /**
  * Peer 列表页面的路由层。
  *
- * @param onBack 返回上一页
  * @param viewModel 页面 ViewModel
  */
 @Composable
 fun PeerListRoute(
-    onBack: () -> Unit,
     viewModel: PeerListViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -27,7 +27,8 @@ fun PeerListRoute(
     val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(Unit) {
-        viewModel.load()
+        // 先启动收集再请求，避免首次请求的错误提示丢失
+        launch { viewModel.load() }
         viewModel.effects.collect { effect ->
             when (effect) {
                 is PeerListEffect.ShowSnackbar ->
@@ -40,6 +41,6 @@ fun PeerListRoute(
         state = state,
         snackbarHostState = snackbarHostState,
         onRefresh = viewModel::refresh,
-        onBack = onBack
+        onRetry = viewModel::retry
     )
 }

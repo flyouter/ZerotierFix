@@ -25,8 +25,8 @@ import javax.inject.Inject
 /**
  * Peer 列表页面的 ViewModel。
  *
- * 保留原行为的差异：服务未运行时静默无响应；节点未就绪时提示
- * `fail_retrieve_peer_list`；下拉刷新最多显示 1 秒加载状态。
+ * 区分服务未运行、节点未就绪与请求失败三种错误，供页面展示可重试的错误态。
+ * 下拉刷新最多显示 1 秒加载状态，与原实现一致。
  */
 @HiltViewModel
 class PeerListViewModel @Inject constructor(
@@ -44,9 +44,10 @@ class PeerListViewModel @Inject constructor(
     val effects: SharedFlow<PeerListEffect> = _effects.asSharedFlow()
 
     /**
-     * 首次进入页面时请求 Peer 列表，不显示下拉刷新指示器。
+     * 首次进入页面时请求 Peer 列表，显示首屏加载态。
      */
     fun load() {
+        _uiState.update { it.copy(isLoading = it.peers.isEmpty(), error = null) }
         viewModelScope.launch { requestPeers() }
     }
 
@@ -56,7 +57,7 @@ class PeerListViewModel @Inject constructor(
      * 请求结果返回前最多显示 1 秒加载状态，与原实现的定时器一致。
      */
     fun refresh() {
-        _uiState.update { it.copy(isRefreshing = true) }
+        _uiState.update { it.copy(isRefreshing = true, error = null) }
         viewModelScope.launch { requestPeers() }
         viewModelScope.launch {
             delay(REFRESH_TIMEOUT_MS)
@@ -65,22 +66,57 @@ class PeerListViewModel @Inject constructor(
     }
 
     /**
+     * 重试加载。
+     */
+    fun retry() {
+        load()
+    }
+
+    /**
      * 请求 Peer 列表并更新页面状态。
      */
     private suspend fun requestPeers() {
         when (val result = vpnEngine.loadPeers()) {
             is VpnCommandResult.Success -> _uiState.update {
-                it.copy(peers = result.value, isRefreshing = false, hasLoaded = true)
+                it.copy(
+                    peers = result.value,
+                    isRefreshing = false,
+                    hasLoaded = true,
+                    isLoading = false,
+                    error = null
+                )
+            }
+            VpnCommandResult.ServiceNotRunning -> _uiState.update {
+                it.copy(
+                    isRefreshing = false,
+                    hasLoaded = true,
+                    isLoading = false,
+                    error = PeerListError.SERVICE_NOT_RUNNING
+                )
             }
             VpnCommandResult.NodeNotReady -> {
-                _uiState.update { it.copy(hasLoaded = true) }
+                _uiState.update {
+                    it.copy(
+                        isRefreshing = false,
+                        hasLoaded = true,
+                        isLoading = false,
+                        error = PeerListError.NODE_NOT_READY
+                    )
+                }
                 _effects.emit(
                     PeerListEffect.ShowSnackbar(
                         UiText.Resource(R.string.fail_retrieve_peer_list)
                     )
                 )
             }
-            else -> _uiState.update { it.copy(hasLoaded = true) }
+            is VpnCommandResult.Failure -> _uiState.update {
+                it.copy(
+                    isRefreshing = false,
+                    hasLoaded = true,
+                    isLoading = false,
+                    error = PeerListError.RETRIEVE_FAILED
+                )
+            }
         }
     }
 
