@@ -58,7 +58,8 @@ enum class CameraScanError {
 /**
  * CameraX 相机预览与二维码解码。
  *
- * 预览使用 `PreviewView`（SurfaceView 优先），兼容性优于 Compose Viewfinder。
+ * 预览使用 camera-view 的 `PreviewView`。`camera-compose` 的 `CameraXViewfinder`
+ * 在部分 legacy HAL 设备上会因预览流 DataSpace 不兼容而无法出帧，故不采用。
  *
  * @param torchOn 是否开启手电筒
  * @param onTorchAvailabilityChanged 手电筒可用性回调
