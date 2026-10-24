@@ -24,4 +24,7 @@
     <color name="logo_bkg">#FAC073</color>
 
     <color name="zerotier_orange">#fac073</color>
+
+    <!-- Compose 主题启动背景，与 ZerotierFixTheme 的 background 对齐 -->
+    <color name="app_background">#F8FAFC</color>
 </resources>

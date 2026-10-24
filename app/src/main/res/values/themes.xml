@@ -1,4 +1,8 @@
 <resources>
     <!-- 应用主题：Material 3，页面顶栏由 Compose 绘制。 -->
-    <style name="Theme.ZerotierFix" parent="Theme.Material3.DayNight.NoActionBar" />
+    <style name="Theme.ZerotierFix" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="android:windowBackground">@color/app_background</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
 </resources>

@@ -85,7 +85,7 @@
     <string name="moon_orbit_exist">Moon Orbit information exists!</string>
     <string name="moon_orbit_add_success">Moon orbit added successfully.</string>
     <string name="moon_orbit_delete_success">Moon orbit deleted successfully. Disconnect &amp; reconnect for this setting to take effect.</string>
-    <string name="unknown_version" translatable="false">-.-.-</string>
+    <string name="unknown_version" translatable="false">—</string>
     <string name="network_connected">Connected</string>
     <string name="connected_to_network">Connected to %s</string>
     <string name="network_detail">Network Detail</string>
@@ -153,4 +153,88 @@
     <string name="dialog_no_notification_alert_title">Notification Permission Not Granted</string>
     <string name="open_notification_settings">Goto notification settings</string>
     <string name="dont_show_again">Don\'t show again</string>
+
+    <!-- 重写后的通用 UI 文案 -->
+    <string name="tab_networks">Networks</string>
+    <string name="tab_peers">Peers</string>
+    <string name="tab_settings">Settings</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_save">Save</string>
+    <string name="action_retry">Retry</string>
+    <string name="loading">Loading…</string>
+    <string name="cd_back">Back</string>
+    <string name="cd_more_options">More options</string>
+    <string name="cd_add_moon">Add Moon</string>
+    <string name="cd_refresh_peers">Refresh peers</string>
+    <string name="cd_network_switch">Network switch for %1$s</string>
+    <string name="cd_copy_value">Copy %1$s</string>
+
+    <string name="label_network_id">Network ID</string>
+    <string name="label_node_id">Node ID</string>
+    <string name="label_app_version">App version</string>
+    <string name="label_peer_client_version">Client version</string>
+    <string name="label_peer_preferred_path">Preferred path</string>
+    <string name="label_moon_world_id">Moon World ID</string>
+    <string name="label_moon_seed">Moon Seed</string>
+
+    <string name="network_empty_title">No networks yet</string>
+    <string name="network_empty_message">Tap the + button to add your first network.</string>
+    <string name="network_unnamed">Unnamed network</string>
+    <string name="network_status_connecting">Connecting…</string>
+    <string name="network_status_disconnected">Not connected</string>
+    <string name="network_service_stopped">Service stopped</string>
+    <string name="network_delete_confirm_title">Delete network?</string>
+    <string name="network_delete_confirm_message">Remove %1$s from this device? The active connection will be stopped.</string>
+    <string name="toast_network_deleted">Network deleted.</string>
+    <string name="toast_connect_failed">Failed to connect. Check the VPN service and try again.</string>
+    <string name="toast_vpn_permission_denied">VPN permission was not granted.</string>
+
+    <string name="network_id_hint">16 hexadecimal characters</string>
+    <string name="network_id_remaining">%1$d characters remaining</string>
+    <string name="network_already_exists">This network has already been added.</string>
+    <string name="join_network_failed">Failed to add network. Please try again.</string>
+    <string name="join_submitting">Adding…</string>
+    <string name="dns_custom_hint">Leave blank to skip.</string>
+    <string name="dns_primary">Primary DNS</string>
+    <string name="dns_secondary">Secondary DNS</string>
+
+    <string name="detail_load_failed">Failed to load network details.</string>
+    <string name="detail_not_found">Network not found.</string>
+    <string name="detail_section_connection">Connection</string>
+    <string name="detail_section_addresses">Addresses &amp; DNS</string>
+    <string name="detail_section_network">Network information</string>
+    <string name="detail_network_info_hint">Connect to view network type, MTU, broadcast, and bridging.</string>
+    <string name="network_no_managed_ips">No managed IP assigned</string>
+    <string name="network_dns_servers">DNS servers</string>
+    <string name="network_dns_waiting">Waiting for network DNS</string>
+    <string name="network_dns_domain">DNS domain</string>
+
+    <string name="peer_loading">Loading peers…</string>
+    <string name="peer_service_not_running">ZeroTier service is not running. Connect a network first.</string>
+    <string name="peer_node_not_ready">ZeroTier node is still starting. Please retry.</string>
+    <string name="peer_load_failed">Failed to load peers.</string>
+    <string name="peer_empty_message">No peers are connected yet.</string>
+    <string name="peer_summary_total">Total</string>
+    <string name="peer_summary_direct">Direct</string>
+    <string name="peer_summary_relay">Relay</string>
+    <string name="peer_summary_latency">Avg. latency</string>
+
+    <string name="moon_file_pick_cancelled">File selection cancelled.</string>
+    <string name="moon_empty_title">No Moon nodes yet</string>
+    <string name="moon_empty_message">Import a Moon node from a file or enter its address.</string>
+    <string name="moon_delete_confirm_title">Delete Moon orbit?</string>
+    <string name="moon_delete_confirm_message">Delete %1$s? Reconnect for the change to take effect.</string>
+    <string name="moon_manual_add">Enter address manually</string>
+    <string name="moon_import_file_action">Import from file</string>
+
+    <string name="settings_general">General</string>
+    <string name="settings_network">Network</string>
+    <string name="settings_about">About</string>
+    <string name="settings_start_on_boot">Start on device boot</string>
+    <string name="settings_start_on_boot_summary">Start ZeroTier automatically after the device boots.</string>
+    <string name="settings_planet_file_set">Planet file configured</string>
+    <string name="settings_planet_file_missing">No planet file selected</string>
+    <string name="settings_file_pick_cancelled">File selection cancelled.</string>
+    <string name="settings_app_version">App version</string>
 </resources>

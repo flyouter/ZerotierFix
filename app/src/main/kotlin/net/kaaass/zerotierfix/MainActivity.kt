@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 
 import dagger.hilt.android.AndroidEntryPoint
@@ -35,13 +37,18 @@ class MainActivity : ComponentActivity() {
                 // Compose 的 Scaffold/TopAppBar。这里统一留出系统栏与刘海空间，再消费
                 // 掉 inset，避免内部组件重复添加相同 padding。
                 val rootInsets = WindowInsets.systemBars.union(WindowInsets.displayCutout)
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .windowInsetsPadding(rootInsets)
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
                 ) {
-                    Box(modifier = Modifier.consumeWindowInsets(rootInsets)) {
-                        ZeroTierNavHost()
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .windowInsetsPadding(rootInsets)
+                    ) {
+                        Box(modifier = Modifier.consumeWindowInsets(rootInsets)) {
+                            ZeroTierNavHost()
+                        }
                     }
                 }
             }
