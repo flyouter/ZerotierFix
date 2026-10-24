@@ -212,11 +212,7 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
      */
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.d(TAG, "onStartCommand")
-        if (startId == 3) {
-            Log.i(TAG, "Authorizing VPN")
-            markServiceStopped()
-            return Service.START_NOT_STICKY
-        } else if (intent == null) {
+        if (intent == null) {
             Log.e(TAG, "NULL intent.  Cannot start")
             markServiceStopped()
             return Service.START_NOT_STICKY
