@@ -70,6 +70,17 @@ class MoonOrbitViewModel @Inject constructor(
     }
 
     /**
+     * 用户取消选择文件时给出轻量提示。
+     */
+    fun onFilePickCancelled() {
+        _effects.tryEmit(
+            MoonOrbitEffect.ShowSnackbar(
+                UiText.Resource(R.string.moon_file_pick_cancelled)
+            )
+        )
+    }
+
+    /**
      * 从文件导入 Moon。
      *
      * @param uri 用户选择的文件

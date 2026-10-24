@@ -41,6 +41,8 @@ fun MoonOrbitRoute(
     ) { uri ->
         if (uri != null) {
             viewModel.importFromFile(uri)
+        } else {
+            viewModel.onFilePickCancelled()
         }
     }
 
