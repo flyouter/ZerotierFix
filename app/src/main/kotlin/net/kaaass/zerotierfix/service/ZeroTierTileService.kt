@@ -4,7 +4,6 @@ import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.content.Intent
 import android.graphics.drawable.Icon
-import android.net.VpnService
 import android.os.Build
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
@@ -84,7 +83,10 @@ class ZeroTierTileService : TileService() {
     }
 
     /**
-     * 处理未连接状态下的点击：选择目标网络并连接。
+     * 处理未连接状态下的点击：选择目标网络并打开授权/连接页。
+     *
+     * 连接统一经由前台透明 Activity 发起：Android 12+ 禁止后台应用直接
+     * `startService`，磁贴点击时进程可能仍被视为后台。
      */
     private fun connectFromTile() {
         if (!controller.isLoaded) {
@@ -97,9 +99,7 @@ class ZeroTierTileService : TileService() {
             toast(R.string.quick_tile_toast_no_network)
             return
         }
-        if (VpnService.prepare(this) == null) {
-            controller.connect(targetNetworkId)
-        } else if (isLocked) {
+        if (isLocked) {
             unlockAndRun { launchConsentActivity(targetNetworkId) }
         } else {
             launchConsentActivity(targetNetworkId)

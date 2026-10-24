@@ -7,8 +7,11 @@ import android.widget.Toast
 
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.lifecycle.lifecycleScope
 
 import dagger.hilt.android.AndroidEntryPoint
+
+import kotlinx.coroutines.launch
 
 import net.kaaass.zerotierfix.R
 
@@ -38,15 +41,15 @@ class VpnConsentActivity : ComponentActivity() {
         }
         resultHandled = true
         if (result.resultCode == Activity.RESULT_OK) {
-            controller.connect(networkId)
+            connectAndFinish()
         } else {
             Toast.makeText(
                 this,
                 R.string.toast_vpn_permission_denied,
                 Toast.LENGTH_SHORT
             ).show()
+            finish()
         }
-        finish()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -87,10 +90,22 @@ class VpnConsentActivity : ComponentActivity() {
         }
         if (consentIntent == null) {
             resultHandled = true
-            controller.connect(networkId)
-            finish()
+            connectAndFinish()
         } else {
             consentLauncher.launch(consentIntent)
+        }
+    }
+
+    /**
+     * 连接目标网络，等待服务启动请求完成后再关闭页面。
+     *
+     * Android 12+ 禁止后台应用启动服务，因此页面必须保持在前台直到
+     * [QuickTileController.connectAwait] 返回。
+     */
+    private fun connectAndFinish() {
+        lifecycleScope.launch {
+            controller.connectAwait(networkId)
+            finish()
         }
     }
 

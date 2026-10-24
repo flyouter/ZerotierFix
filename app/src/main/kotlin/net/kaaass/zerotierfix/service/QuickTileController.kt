@@ -139,66 +139,92 @@ class QuickTileController @Inject constructor(
      * 若服务已在运行，先离开并停止当前网络；连接前写入上次连接记录，
      * 与 App 内网络列表的行为保持一致。
      *
+     * 从磁贴点击时应使用 [connectAwait]：Android 12+ 禁止后台应用启动服务，
+     * 需要由前台 Activity 等待连接完成后再关闭。
+     *
      * @param networkId 目标网络 ID
      */
-    fun connect(networkId: Long) = launchAction(QuickTileOperation.CONNECTING) {
-        val network = withContext(ioDispatcher) {
-            networkRepository.getNetworkSummary(networkId)
+    fun connect(networkId: Long) {
+        scope.launch {
+            connectBlock(networkId)
         }
-        if (network == null) {
-            toast(R.string.quick_tile_toast_network_missing)
-            return@launchAction
-        }
-        if (!checkNetworkAvailable()) {
-            return@launchAction
-        }
+    }
 
-        stopCurrentIfNeeded()
-        withContext(ioDispatcher) {
-            networkRepository.setLastActivated(networkId)
-        }
-        lastActivated.value = networkId
-
-        if (!vpnEngine.start(networkId)) {
-            toast(R.string.toast_connect_failed)
-        }
+    /**
+     * 连接指定网络并在返回前完成服务启动请求。
+     *
+     * 调用方（透明授权页）应保持在前台直到本方法返回，否则服务启动可能被
+     * 系统的后台限制拒绝。
+     *
+     * @param networkId 目标网络 ID
+     */
+    suspend fun connectAwait(networkId: Long) {
+        connectBlock(networkId)
     }
 
     /**
      * 断开当前网络并停止服务。
      */
-    fun disconnect() = launchAction(QuickTileOperation.DISCONNECTING) {
-        val serviceState = vpnEngine.serviceState.value
-        if (serviceState != ServiceState.RUNNING && serviceState != ServiceState.STARTING) {
-            return@launchAction
+    fun disconnect() {
+        scope.launch {
+            disconnectBlock()
         }
-        val connectedId = vpnEngine.connectedNetworks.value
-            ?.lastOrNull()
-            ?.networkId
-            ?: lastActivated.value
-        vpnEngine.leaveAndStop(connectedId)
     }
 
-    /**
-     * 串行执行操作；已有操作进行时直接丢弃新的请求，避免连点重复启动服务。
-     */
-    private fun launchAction(
-        operation: QuickTileOperation,
-        block: suspend () -> Unit
-    ) {
-        scope.launch {
-            if (!actionMutex.tryLock()) {
-                return@launch
+    private suspend fun connectBlock(networkId: Long) {
+        if (!actionMutex.tryLock()) {
+            return
+        }
+        operation.value = QuickTileOperation.CONNECTING
+        try {
+            val network = withContext(ioDispatcher) {
+                networkRepository.getNetworkSummary(networkId)
             }
-            this@QuickTileController.operation.value = operation
-            try {
-                block()
-            } catch (e: Exception) {
-                Log.e(TAG, "Quick tile action failed", e)
-            } finally {
-                this@QuickTileController.operation.value = QuickTileOperation.IDLE
-                actionMutex.unlock()
+            if (network == null) {
+                toast(R.string.quick_tile_toast_network_missing)
+                return
             }
+            if (!checkNetworkAvailable()) {
+                return
+            }
+
+            stopCurrentIfNeeded()
+            withContext(ioDispatcher) {
+                networkRepository.setLastActivated(networkId)
+            }
+            lastActivated.value = networkId
+
+            if (!vpnEngine.start(networkId)) {
+                toast(R.string.toast_connect_failed)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "connect failed", e)
+        } finally {
+            operation.value = QuickTileOperation.IDLE
+            actionMutex.unlock()
+        }
+    }
+
+    private suspend fun disconnectBlock() {
+        if (!actionMutex.tryLock()) {
+            return
+        }
+        operation.value = QuickTileOperation.DISCONNECTING
+        try {
+            val serviceState = vpnEngine.serviceState.value
+            if (serviceState != ServiceState.RUNNING && serviceState != ServiceState.STARTING) {
+                return
+            }
+            val connectedId = vpnEngine.connectedNetworks.value
+                ?.lastOrNull()
+                ?.networkId
+                ?: lastActivated.value
+            vpnEngine.leaveAndStop(connectedId)
+        } catch (e: Exception) {
+            Log.e(TAG, "disconnect failed", e)
+        } finally {
+            operation.value = QuickTileOperation.IDLE
+            actionMutex.unlock()
         }
     }
 
