@@ -55,6 +55,17 @@ class VpnStateStoreTest {
     }
 
     /**
+     * 清空后恢复“尚未加载”，避免服务停止后继续读到旧配置。
+     */
+    @Test
+    fun clearVirtualNetworkConfigs() {
+        val store = VpnStateStore()
+        store.setVirtualNetworkConfig(1L, sampleConfig(1L))
+        store.clearVirtualNetworkConfigs()
+        assertNull(store.virtualNetworkConfigs.value)
+    }
+
+    /**
      * 构造测试用网络配置。
      */
     private fun sampleConfig(networkId: Long): VirtualNetworkConfigDto = VirtualNetworkConfigDto(

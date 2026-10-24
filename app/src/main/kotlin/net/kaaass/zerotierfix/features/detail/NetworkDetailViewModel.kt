@@ -93,8 +93,11 @@ class NetworkDetailViewModel @Inject constructor(
                 vpnEngine.reconfigure(networkId)
             }
             // 优先使用服务写入进程内 store 的实时配置，避免额外的 binder 查询。
+            // 服务未运行时缓存可能已过期，不能作为当前状态展示。
+            val serviceActive = serviceState == ServiceState.RUNNING ||
+                serviceState == ServiceState.STARTING
             val cachedConfig = vpnEngine.virtualNetworkConfigs.value?.get(networkId)
-            if (cachedConfig != null) {
+            if (cachedConfig != null && serviceActive) {
                 applyVirtualConfig(cachedConfig)
             } else if (serviceState == ServiceState.RUNNING) {
                 when (val result = vpnEngine.virtualNetworkConfig(networkId)) {
@@ -143,7 +146,11 @@ class NetworkDetailViewModel @Inject constructor(
         viewModelScope.launch {
             vpnEngine.virtualNetworkConfigs.collect { configs ->
                 val config = configs?.get(networkId) ?: return@collect
-                applyVirtualConfig(config)
+                // 服务未运行时忽略缓存，避免停止过程中短暂展示过期配置。
+                when (vpnEngine.serviceState.value) {
+                    ServiceState.RUNNING, ServiceState.STARTING -> applyVirtualConfig(config)
+                    ServiceState.UNKNOWN, ServiceState.STOPPED -> Unit
+                }
             }
         }
     }

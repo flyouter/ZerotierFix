@@ -149,6 +149,16 @@ class VpnStateStore @Inject constructor() {
     }
 
     /**
+     * 清空所有网络的实时配置，恢复到“尚未加载”。
+     *
+     * 服务停止后这些配置不再有效；不清空会让只读缓存的页面展示过期的
+     * IP、DNS 与在线状态。
+     */
+    fun clearVirtualNetworkConfigs() {
+        _virtualNetworkConfigs.value = null
+    }
+
+    /**
      * 发出 VPN 错误消息。
      *
      * @param message 错误消息

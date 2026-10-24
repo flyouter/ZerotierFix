@@ -418,6 +418,8 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
                 this.node = null
             }
             store.setServiceState(ServiceState.STOPPED)
+            store.setConnectedNetworks(null)
+            store.clearVirtualNetworkConfigs()
             this.notificationController.cancel()
             if (!stopSelfResult(this.mStartID)) {
                 Log.e(TAG, "stopSelfResult() failed!")
@@ -784,6 +786,8 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
     private fun markServiceStopped() {
         store.setServiceState(ServiceState.STOPPED)
         store.setNodeStatus(null)
+        store.setConnectedNetworks(null)
+        store.clearVirtualNetworkConfigs()
         if (this.node == null) {
             this.notificationController.cancel()
         }
