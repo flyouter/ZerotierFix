@@ -163,7 +163,8 @@ fun CameraBarcodePreview(
         }
 
         onDispose {
-            analyzer.stopAnalyzing()
+            // 只解除绑定，不能 stopAnalyzing：该 effect 会随 cameraProvider 变化重启，
+            // 而 analyzer 实例跨重启复用，一旦停止就再也无法解码
             analysis.clearAnalyzer()
             camera?.cameraControl?.enableTorch(false)
             camera = null
