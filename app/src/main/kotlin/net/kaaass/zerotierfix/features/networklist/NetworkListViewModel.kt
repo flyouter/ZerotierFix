@@ -12,6 +12,9 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -19,6 +22,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -72,6 +77,10 @@ class NetworkListViewModel @Inject constructor(
 
     private val actionMutex = Mutex()
 
+    private var refreshJob: Job? = null
+
+    private var noticeRefreshJob: Job? = null
+
     /** 数据库中的网络列表，用于引擎状态变化时重建条目。 */
     private var summaries: List<NetworkSummary> = emptyList()
 
@@ -80,22 +89,48 @@ class NetworkListViewModel @Inject constructor(
 
     init {
         observeVpnState()
+        observeSettings()
     }
 
     /**
      * 刷新网络列表与节点状态。
      *
-     * 线程：主线程调用，数据库读取切换到 IO 线程。
+     * 线程：主线程调用，数据库与权限检查切换到 IO 线程。
      */
     fun refresh() {
-        viewModelScope.launch {
-            refreshNetworks()
-            val nodeId = withContext(ioDispatcher) { appNodeRepository.getNodeIdStr() }
-            if (nodeId != null) {
+        refreshJob?.cancel()
+        refreshJob = viewModelScope.launch {
+            val networksDeferred = async(ioDispatcher) {
+                networkRepository.getAllNetworks()
+            }
+            val nodeIdDeferred = if (_uiState.value.nodeId == null) {
+                async(ioDispatcher) { appNodeRepository.getNodeIdStr() }
+            } else {
+                null
+            }
+            val notificationsEnabledDeferred = async(ioDispatcher) {
+                NotificationManagerCompat.from(context).areNotificationsEnabled()
+            }
+
+            // 列表优先发布，并与首次加载态合并为一次状态更新。
+            summaries = networksDeferred.await()
+            val items = buildItems()
+            _uiState.update { it.copy(networks = items, isLoading = false) }
+
+            nodeIdDeferred?.await()?.let { nodeId ->
                 _uiState.update { it.copy(nodeId = nodeId) }
             }
-            vpnEngine.refreshState()
-            checkNotificationPermission()
+
+            val notificationsEnabled = notificationsEnabledDeferred.await()
+            val alertVisible = !notificationsEnabled &&
+                !settingsRepository.settings.value.isNoNotificationAlertDisabled
+            _uiState.update { state ->
+                if (state.isNotificationAlertVisible == alertVisible) {
+                    state
+                } else {
+                    state.copy(isNotificationAlertVisible = alertVisible)
+                }
+            }
         }
     }
 
@@ -254,14 +289,26 @@ class NetworkListViewModel @Inject constructor(
                         UiText.Resource(R.string.toast_vpn_error, listOf(message))
                     )
                 )
-                refreshNetworks()
+                scheduleNetworksRefresh()
             }
         }
         viewModelScope.launch {
             vpnEngine.statusNotices.collect { config ->
                 emitStatusNotice(config)
-                refreshNetworks()
+                scheduleNetworksRefresh()
             }
+        }
+    }
+
+    /**
+     * 设置变化时重建列表条目（例如 IPv6 过滤开关）。
+     */
+    private fun observeSettings() {
+        viewModelScope.launch {
+            settingsRepository.settings
+                .map { it.isIpv6Disabled }
+                .distinctUntilChanged()
+                .collect { rebuildItems() }
         }
     }
 
@@ -330,10 +377,9 @@ class NetworkListViewModel @Inject constructor(
      * 从数据库重新读取网络列表并重建 UI 条目。
      */
     private suspend fun refreshNetworks() {
-        val networks = withContext(ioDispatcher) { networkRepository.getAllNetworks() }
-        summaries = networks
-        rebuildItems()
-        _uiState.update { it.copy(isLoading = false) }
+        summaries = withContext(ioDispatcher) { networkRepository.getAllNetworks() }
+        val items = buildItems()
+        _uiState.update { it.copy(networks = items, isLoading = false) }
     }
 
     /**
@@ -342,17 +388,35 @@ class NetworkListViewModel @Inject constructor(
      * 服务停止时忽略缓存的实时配置，避免展示过期状态。
      */
     private fun rebuildItems() {
+        val items = buildItems()
+        _uiState.update { it.copy(networks = items) }
+    }
+
+    /**
+     * 按当前服务状态与设置构建列表条目。
+     */
+    private fun buildItems(): List<NetworkListItem> {
         val state = _uiState.value
         val configs = when (state.serviceState) {
             ServiceState.RUNNING, ServiceState.STARTING -> engineConfigs
             ServiceState.UNKNOWN, ServiceState.STOPPED -> null
         }
-        val items = buildNetworkItems(
+        return buildNetworkItems(
             summaries = summaries,
             configs = configs,
-            disableIpv6 = settingsRepository.isIpv6Disabled
+            disableIpv6 = settingsRepository.settings.value.isIpv6Disabled
         )
-        _uiState.update { it.copy(networks = items) }
+    }
+
+    /**
+     * 合并短时间内的多次状态通知，避免连接过程中重复查询数据库。
+     */
+    private fun scheduleNetworksRefresh() {
+        noticeRefreshJob?.cancel()
+        noticeRefreshJob = viewModelScope.launch {
+            delay(NOTICE_REFRESH_DEBOUNCE_MS)
+            refreshNetworks()
+        }
     }
 
     /**
@@ -398,16 +462,6 @@ class NetworkListViewModel @Inject constructor(
     }
 
     /**
-     * 检查通知权限，必要时显示提示框。
-     */
-    private fun checkNotificationPermission() {
-        val enabled = NotificationManagerCompat.from(context).areNotificationsEnabled()
-        if (!enabled && !settingsRepository.isNoNotificationAlertDisabled) {
-            _uiState.update { it.copy(isNotificationAlertVisible = true) }
-        }
-    }
-
-    /**
      * 获取当前活动网络。
      *
      * @return 当前网络；无网络时返回 `null`
@@ -428,4 +482,9 @@ class NetworkListViewModel @Inject constructor(
         val nodeStatus: NodeStatusDto?,
         val nodeId: String?
     )
+
+    companion object {
+        /** 状态通知触发数据库刷新时的合并窗口。 */
+        private const val NOTICE_REFRESH_DEBOUNCE_MS = 100L
+    }
 }
