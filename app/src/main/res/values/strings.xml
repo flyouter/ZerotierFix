@@ -244,8 +244,6 @@
     <string name="cd_toggle_torch">Toggle flashlight</string>
     <string name="scan_permission_title">Camera permission required</string>
     <string name="scan_permission_rationale">Camera access is required to scan a network QR code.</string>
-    <string name="scan_permission_denied">Camera permission was denied. Enable it in system settings, then return to this screen.</string>
-    <string name="scan_permission_continue">Continue</string>
     <string name="scan_permission_grant">Grant permission</string>
     <string name="scan_open_settings">Open settings</string>
     <string name="scan_camera_unavailable">This device has no usable camera.</string>

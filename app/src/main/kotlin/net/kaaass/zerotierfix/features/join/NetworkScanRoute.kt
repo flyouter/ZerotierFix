@@ -10,11 +10,8 @@ import android.provider.Settings
 import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -51,8 +48,6 @@ fun NetworkScanRoute(
 
     var permissionGranted by remember { mutableStateOf(context.hasCameraPermission()) }
     var hasRequested by rememberSaveable { mutableStateOf(false) }
-    var showRationale by rememberSaveable { mutableStateOf(false) }
-    var showSettings by rememberSaveable { mutableStateOf(false) }
     var torchOn by rememberSaveable { mutableStateOf(false) }
     var hasFlash by remember { mutableStateOf(false) }
     var cameraError by remember { mutableStateOf<CameraScanError?>(null) }
@@ -65,28 +60,21 @@ fun NetworkScanRoute(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
         permissionGranted = granted
-        if (!granted) {
-            val canAskAgain = activity != null &&
-                ActivityCompat.shouldShowRequestPermissionRationale(
-                    activity,
-                    Manifest.permission.CAMERA
-                )
-            if (canAskAgain) {
-                showRationale = true
-            } else {
-                showSettings = true
-            }
-        }
     }
 
     fun requestPermission() {
-        if (permissionGranted || activity == null) {
+        if (permissionGranted) {
             return
         }
+        val currentActivity = activity ?: return
+        // 系统已不再允许弹窗（永久拒绝）时，直接引导到应用设置
         if (hasRequested &&
-            !ActivityCompat.shouldShowRequestPermissionRationale(activity, Manifest.permission.CAMERA)
+            !ActivityCompat.shouldShowRequestPermissionRationale(
+                currentActivity,
+                Manifest.permission.CAMERA
+            )
         ) {
-            showSettings = true
+            context.openAppSettings()
             return
         }
         hasRequested = true
@@ -135,49 +123,6 @@ fun NetworkScanRoute(
         },
         onCameraError = { cameraError = it }
     )
-
-    if (showRationale) {
-        AlertDialog(
-            onDismissRequest = { showRationale = false },
-            title = { Text(stringResource(R.string.scan_permission_title)) },
-            text = { Text(stringResource(R.string.scan_permission_rationale)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    showRationale = false
-                    hasRequested = true
-                    permissionLauncher.launch(Manifest.permission.CAMERA)
-                }) {
-                    Text(stringResource(R.string.scan_permission_continue))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showRationale = false }) {
-                    Text(stringResource(R.string.action_cancel))
-                }
-            }
-        )
-    }
-
-    if (showSettings) {
-        AlertDialog(
-            onDismissRequest = { showSettings = false },
-            title = { Text(stringResource(R.string.scan_permission_title)) },
-            text = { Text(stringResource(R.string.scan_permission_denied)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    showSettings = false
-                    context.openAppSettings()
-                }) {
-                    Text(stringResource(R.string.scan_open_settings))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showSettings = false }) {
-                    Text(stringResource(R.string.action_cancel))
-                }
-            }
-        )
-    }
 }
 
 /**

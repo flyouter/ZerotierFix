@@ -242,8 +242,6 @@
     <string name="cd_toggle_torch">开关手电筒</string>
     <string name="scan_permission_title">需要相机权限</string>
     <string name="scan_permission_rationale">扫描网络二维码需要使用相机，请授予相机权限。</string>
-    <string name="scan_permission_denied">相机权限已被拒绝，请在系统设置中开启后返回。</string>
-    <string name="scan_permission_continue">继续</string>
     <string name="scan_permission_grant">授予权限</string>
     <string name="scan_open_settings">打开设置</string>
     <string name="scan_camera_unavailable">当前设备没有可用的相机。</string>
