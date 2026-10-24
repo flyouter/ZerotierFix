@@ -413,31 +413,49 @@ class TunTapAdapter(
 
     /**
      * 停止接收线程并关闭流。
+     *
+     * join 带超时：TUN 读可能阻塞在内核中，`close()` / `interrupt()` 不保证
+     * 立即唤醒，不能因此让停止流程永久卡住。
      */
-    fun interrupt() {
-        if (this.receiveThread != null) {
-            try {
-                this.input!!.close()
-                this.output!!.close()
-            } catch (e: IOException) {
-                Log.e(TAG, "Error stopping in/out: " + e.message, e)
-            }
-            this.receiveThread!!.interrupt()
-            try {
-                this.receiveThread!!.join()
-            } catch (ignored: InterruptedException) {
-            }
+    fun interrupt(): Boolean {
+        val thread = this.receiveThread ?: return true
+        try {
+            this.input?.close()
+            this.output?.close()
+        } catch (e: IOException) {
+            Log.e(TAG, "Error stopping in/out: " + e.message, e)
         }
+        val stopped = joinThread(thread)
+        this.receiveThread = null
+        return stopped
     }
 
     /**
-     * 等待接收线程结束。
-     *
-     * @throws InterruptedException 等待时线程被中断
+     * 等待接收线程结束；线程不存在时立即返回。
      */
-    @Throws(InterruptedException::class)
     fun join() {
-        this.receiveThread!!.join()
+        this.receiveThread?.let { joinThread(it) }
+    }
+
+    /**
+     * 中断并以固定超时等待接收线程。
+     *
+     * @return 线程已退出时返回 `true`
+     */
+    private fun joinThread(thread: Thread): Boolean {
+        if (thread === Thread.currentThread() || !thread.isAlive) {
+            return true
+        }
+        thread.interrupt()
+        try {
+            thread.join(THREAD_JOIN_TIMEOUT_MS)
+        } catch (ignored: InterruptedException) {
+        }
+        if (thread.isAlive) {
+            Log.w(TAG, "Tunnel receive thread still alive after ${THREAD_JOIN_TIMEOUT_MS}ms")
+            return false
+        }
+        return true
     }
 
     private fun isNeighborSolicitation(packetData: ByteArray): Boolean =
@@ -602,6 +620,9 @@ class TunTapAdapter(
         private const val ARP_PACKET = 2054
         private const val IPV4_PACKET = 2048
         private const val IPV6_PACKET = 34525
+
+        /** 等待接收线程退出的超时时间。 */
+        private const val THREAD_JOIN_TIMEOUT_MS = 1_000L
 
         /**
          * 将组播地址转换为对应的 MAC 地址。

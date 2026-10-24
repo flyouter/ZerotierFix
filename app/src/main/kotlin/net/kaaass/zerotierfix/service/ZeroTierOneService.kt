@@ -7,6 +7,7 @@ import android.os.Binder
 import android.os.Build
 import android.os.IBinder
 import android.os.ParcelFileDescriptor
+import android.os.SystemClock
 import android.util.Log
 import android.widget.Toast
 
@@ -348,9 +349,14 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
     /**
      * 停止 ZeroTier 服务并释放资源。
      *
-     * 线程：会 join UDP / TUN / VPN 线程，应在后台线程调用。
+     * 线程：会短暂 join UDP / TUN / VPN 线程，应在后台线程调用；
+     * `onDestroy` 等主线程路径依赖 [TEARDOWN_TIMEOUT_MS] 的总预算避免 ANR。
      * 幂等：已有停止流程在进行时立即返回，避免 `onDestroy` 或 UDP 线程
      * 等待命令线程而互相阻塞。
+     *
+     * 顺序很重要：先关闭 TUN fd 拆掉隧道并撤销通知，再等待工作线程退出。
+     * 工作线程可能阻塞在 native 调用或 TUN 读上，`interrupt()` 不保证唤醒，
+     * 因此 join 必须有超时；即使线程未退出，也要保证隧道、通知和状态已清理。
      */
     fun stopZeroTier() {
         synchronized(stopStateLock) {
@@ -360,63 +366,62 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
             this.isStopping = true
         }
         try {
+            val deadline = SystemClock.elapsedRealtime() + TEARDOWN_TIMEOUT_MS
+
+            // 先拆隧道：关闭 TUN fd 后系统 VPN 图标立即消失，并尽量唤醒阻塞的读线程。
+            closeVpnResources()
+
+            // 关闭 UDP socket，停止 SDK 的收发。
             val socket = this.svrSocket
-            if (socket != null) {
-                socket.close()
-                this.svrSocket = null
+            this.svrSocket = null
+            try {
+                socket?.close()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error closing UDP socket", e)
             }
-            val udp = this.udpThread
-            if (udp != null && udp.isAlive && udp !== Thread.currentThread()) {
-                udp.interrupt()
-                try {
-                    udp.join()
-                } catch (ignored: InterruptedException) {
-                }
-                this.udpThread = null
-            }
+
+            // 先撤销通知，后续任何一步卡住都不会留下“已连接”假象。
+            this.notificationController.cancel()
+
+            var threadsStopped = joinThread(this.udpThread, deadline, "UDP")
+            this.udpThread = null
+
             val adapter = this.tunTapAdapter
-            if (adapter != null && adapter.isRunning() && adapter !== Thread.currentThread()) {
-                adapter.interrupt()
-                try {
-                    adapter.join()
-                } catch (ignored: InterruptedException) {
-                }
+            if (adapter != null) {
+                threadsStopped = adapter.interrupt() && threadsStopped
                 this.tunTapAdapter = null
             }
-            val vpn = this.vpnThread
-            if (vpn != null && vpn.isAlive && vpn !== Thread.currentThread()) {
-                vpn.interrupt()
-                try {
-                    vpn.join()
-                } catch (ignored: InterruptedException) {
-                }
-                this.vpnThread = null
-            }
-            val v4 = this.v4MulticastScanner
-            if (v4 != null) {
-                v4.interrupt()
-                try {
-                    v4.join()
-                } catch (ignored: InterruptedException) {
-                }
-                this.v4MulticastScanner = null
-            }
-            val v6 = this.v6MulticastScanner
-            if (v6 != null) {
-                v6.interrupt()
-                try {
-                    v6.join()
-                } catch (ignored: InterruptedException) {
-                }
-                this.v6MulticastScanner = null
-            }
+
+            threadsStopped = joinThread(this.vpnThread, deadline, "VPN") && threadsStopped
+            this.vpnThread = null
+
+            threadsStopped =
+                joinThread(this.v4MulticastScanner, deadline, "IPv4 multicast") && threadsStopped
+            this.v4MulticastScanner = null
+
+            threadsStopped =
+                joinThread(this.v6MulticastScanner, deadline, "IPv6 multicast") && threadsStopped
+            this.v6MulticastScanner = null
+
             closeVpnSocket()
             val node = this.node
             if (node != null) {
-                store.setNodeStatus(null)
-                node.close()
+                try {
+                    store.setNodeStatus(null)
+                    if (threadsStopped) {
+                        node.close()
+                    } else {
+                        // 仍有线程可能正在调用 SDK；此时关闭 node 可能导致 native 崩溃。
+                        Log.w(TAG, "Skip node.close(): worker threads still alive")
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error closing node", e)
+                }
                 this.node = null
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "stopZeroTier failed", e)
+        } finally {
             store.setServiceState(ServiceState.STOPPED)
             store.setConnectedNetworks(null)
             store.clearVirtualNetworkConfigs()
@@ -424,11 +429,42 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
             if (!stopSelfResult(this.mStartID)) {
                 Log.e(TAG, "stopSelfResult() failed!")
             }
-        } finally {
             synchronized(stopStateLock) {
                 this.isStopping = false
             }
         }
+    }
+
+    /**
+     * 在截止时间前中断并等待工作线程退出。
+     *
+     * 超时只记录日志，不抛出异常：调用方仍需继续清理隧道与状态。
+     *
+     * @param thread 目标线程
+     * @param deadline 总预算的截止时间（[SystemClock.elapsedRealtime]）
+     * @param name 线程名，用于日志
+     * @return 线程已退出（或无需等待）时返回 `true`
+     */
+    private fun joinThread(thread: Thread?, deadline: Long, name: String): Boolean {
+        if (thread == null || thread === Thread.currentThread() || !thread.isAlive) {
+            return true
+        }
+        thread.interrupt()
+        val remaining = deadline - SystemClock.elapsedRealtime()
+        if (remaining <= 0L) {
+            Log.w(TAG, "$name thread did not stop before teardown deadline")
+            return false
+        }
+        try {
+            thread.join(remaining)
+        } catch (e: InterruptedException) {
+            Log.w(TAG, "Interrupted while waiting for $name thread")
+        }
+        if (thread.isAlive) {
+            Log.w(TAG, "$name thread still alive after ${remaining}ms")
+            return false
+        }
+        return true
     }
 
     override fun onDestroy() {
@@ -820,11 +856,8 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
     override fun restartTunnelAdapter() {
         val adapter = this.tunTapAdapter ?: return
         if (adapter.isRunning()) {
+            // interrupt() 内部已带超时等待接收线程退出。
             adapter.interrupt()
-            try {
-                adapter.join()
-            } catch (ignored: InterruptedException) {
-            }
         }
     }
 
@@ -903,6 +936,9 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
         const val MSG_LEAVE_NETWORK = 2
         const val ZT1_NETWORK_ID = "com.zerotier.one.network_id"
         const val ZT1_USE_DEFAULT_ROUTE = "com.zerotier.one.use_default_route"
+
+        /** 停止流程等待工作线程退出的总预算，避免主线程路径 ANR。 */
+        private const val TEARDOWN_TIMEOUT_MS = 2_000L
 
         private const val TAG = "ZT1_Service"
     }
