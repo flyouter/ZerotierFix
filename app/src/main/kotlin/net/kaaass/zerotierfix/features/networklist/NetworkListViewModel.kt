@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -31,10 +32,12 @@ import net.kaaass.zerotierfix.data.repository.NetworkRepository
 import net.kaaass.zerotierfix.data.repository.SettingsRepository
 import net.kaaass.zerotierfix.di.IoDispatcher
 import net.kaaass.zerotierfix.model.dto.NetworkSummary
+import net.kaaass.zerotierfix.model.dto.NodeStatusDto
 import net.kaaass.zerotierfix.model.dto.VirtualNetworkConfigDto
 import net.kaaass.zerotierfix.model.enums.NetworkStatus
 import net.kaaass.zerotierfix.ui.common.UiText
 import net.kaaass.zerotierfix.util.StringUtils
+import net.kaaass.zerotierfix.vpn.engine.ServiceState
 import net.kaaass.zerotierfix.vpn.engine.VpnEngine
 
 import javax.inject.Inject
@@ -69,6 +72,12 @@ class NetworkListViewModel @Inject constructor(
 
     private val actionMutex = Mutex()
 
+    /** 数据库中的网络列表，用于引擎状态变化时重建条目。 */
+    private var summaries: List<NetworkSummary> = emptyList()
+
+    /** 引擎实时配置缓存。 */
+    private var engineConfigs: Map<Long, VirtualNetworkConfigDto>? = null
+
     init {
         observeVpnState()
     }
@@ -94,18 +103,26 @@ class NetworkListViewModel @Inject constructor(
      * 切换网络开关。
      *
      * 打开时先离开并停止当前连接，再检查网络环境后启动目标网络；
-     * 关闭时离开网络并停止服务。
+     * 关闭时离开网络并停止服务。操作进行中忽略新的开关请求。
      *
      * @param network 目标网络
      * @param enabled 是否打开
      */
     fun setNetworkEnabled(network: NetworkSummary, enabled: Boolean) {
+        if (_uiState.value.operatingNetworkId != null) {
+            return
+        }
         viewModelScope.launch {
             actionMutex.withLock {
-                if (enabled) {
-                    connect(network)
-                } else {
-                    disconnect(network)
+                _uiState.update { it.copy(operatingNetworkId = network.networkId) }
+                try {
+                    if (enabled) {
+                        connect(network)
+                    } else {
+                        disconnect(network)
+                    }
+                } finally {
+                    _uiState.update { it.copy(operatingNetworkId = null) }
                 }
             }
         }
@@ -119,10 +136,20 @@ class NetworkListViewModel @Inject constructor(
      */
     fun onVpnConsentResult(networkId: Long, granted: Boolean) {
         if (!granted) {
+            _effects.tryEmit(
+                NetworkListEffect.ShowToast(UiText.Resource(R.string.toast_vpn_permission_denied))
+            )
             return
         }
         viewModelScope.launch {
-            actionMutex.withLock { startNetwork(networkId) }
+            actionMutex.withLock {
+                _uiState.update { it.copy(operatingNetworkId = networkId) }
+                try {
+                    startNetwork(networkId)
+                } finally {
+                    _uiState.update { it.copy(operatingNetworkId = null) }
+                }
+            }
         }
     }
 
@@ -134,16 +161,29 @@ class NetworkListViewModel @Inject constructor(
      * @param network 目标网络
      */
     fun deleteNetwork(network: NetworkSummary) {
+        if (_uiState.value.operatingNetworkId != null) {
+            return
+        }
         viewModelScope.launch {
             actionMutex.withLock {
-                if (_uiState.value.connectedNetworkId == network.networkId) {
-                    vpnEngine.stop()
-                    _uiState.update { it.copy(connectedNetworkId = null) }
+                _uiState.update { it.copy(operatingNetworkId = network.networkId) }
+                try {
+                    if (_uiState.value.connectedNetworkId == network.networkId) {
+                        vpnEngine.stop()
+                        _uiState.update { it.copy(connectedNetworkId = null) }
+                    }
+                    withContext(ioDispatcher) {
+                        networkRepository.deleteNetwork(network.networkId)
+                    }
+                    refreshNetworks()
+                    _effects.emit(
+                        NetworkListEffect.ShowToast(
+                            UiText.Resource(R.string.toast_network_deleted)
+                        )
+                    )
+                } finally {
+                    _uiState.update { it.copy(operatingNetworkId = null) }
                 }
-                withContext(ioDispatcher) {
-                    networkRepository.deleteNetwork(network.networkId)
-                }
-                refreshNetworks()
             }
         }
     }
@@ -176,36 +216,35 @@ class NetworkListViewModel @Inject constructor(
      */
     private fun observeVpnState() {
         viewModelScope.launch {
-            vpnEngine.connectedNetworks.collect { networks ->
-                val connected = networks?.lastOrNull()?.networkId
-                if (connected != null) {
-                    _uiState.update { it.copy(connectedNetworkId = connected) }
-                }
-            }
-        }
-        viewModelScope.launch {
-            vpnEngine.nodeStatus.collect { status ->
+            combine(
+                vpnEngine.serviceState,
+                vpnEngine.connectedNetworks,
+                vpnEngine.virtualNetworkConfigs,
+                vpnEngine.nodeStatus,
+                vpnEngine.nodeId
+            ) { serviceState, connectedNetworks, configs, nodeStatus, nodeId ->
+                EngineSnapshot(serviceState, connectedNetworks, configs, nodeStatus, nodeId)
+            }.collect { snapshot ->
+                engineConfigs = snapshot.configs
+                val currentConnectedId = _uiState.value.connectedNetworkId
                 _uiState.update { state ->
-                    when {
-                        status == null -> state.copy(nodeStatus = null)
-                        status.isOnline -> state.copy(
-                            nodeStatus = status,
-                            nodeId = java.lang.Long.toHexString(status.address),
-                            clientVersion = status.clientVersion
-                        )
-                        else -> state.copy(
-                            nodeStatus = status,
-                            clientVersion = status.clientVersion
-                        )
-                    }
+                    state.copy(
+                        serviceState = snapshot.serviceState,
+                        connectedNetworkId = resolveConnectedId(
+                            snapshot.serviceState,
+                            snapshot.connectedNetworks,
+                            currentConnectedId
+                        ),
+                        nodeStatus = snapshot.nodeStatus,
+                        clientVersion = snapshot.nodeStatus?.clientVersion ?: state.clientVersion,
+                        nodeId = snapshot.nodeId
+                            ?: snapshot.nodeStatus
+                                ?.takeIf { it.isOnline }
+                                ?.let { java.lang.Long.toHexString(it.address) }
+                            ?: state.nodeId
+                    )
                 }
-            }
-        }
-        viewModelScope.launch {
-            vpnEngine.nodeId.collect { nodeId ->
-                if (nodeId != null) {
-                    _uiState.update { it.copy(nodeId = nodeId) }
-                }
+                rebuildItems()
             }
         }
         viewModelScope.launch {
@@ -280,16 +319,56 @@ class NetworkListViewModel @Inject constructor(
         if (vpnEngine.start(networkId)) {
             _uiState.update { it.copy(connectedNetworkId = networkId) }
         } else {
+            _effects.emit(
+                NetworkListEffect.ShowToast(UiText.Resource(R.string.toast_connect_failed))
+            )
             refreshNetworks()
         }
     }
 
     /**
-     * 从数据库重新读取网络列表。
+     * 从数据库重新读取网络列表并重建 UI 条目。
      */
     private suspend fun refreshNetworks() {
         val networks = withContext(ioDispatcher) { networkRepository.getAllNetworks() }
-        _uiState.update { it.copy(networks = networks, isLoading = false) }
+        summaries = networks
+        rebuildItems()
+        _uiState.update { it.copy(isLoading = false) }
+    }
+
+    /**
+     * 按当前引擎状态重建列表条目。
+     *
+     * 服务停止时忽略缓存的实时配置，避免展示过期状态。
+     */
+    private fun rebuildItems() {
+        val state = _uiState.value
+        val configs = when (state.serviceState) {
+            ServiceState.RUNNING, ServiceState.STARTING -> engineConfigs
+            ServiceState.UNKNOWN, ServiceState.STOPPED -> null
+        }
+        val items = buildNetworkItems(
+            summaries = summaries,
+            configs = configs,
+            disableIpv6 = settingsRepository.isIpv6Disabled
+        )
+        _uiState.update { it.copy(networks = items) }
+    }
+
+    /**
+     * 计算当前连接的网络 ID。
+     *
+     * `STARTING` 与服务刚启动但尚未上报网络时保留调用方设置的乐观值；
+     * 服务停止或明确上报空列表时清空。
+     */
+    private fun resolveConnectedId(
+        serviceState: ServiceState,
+        connectedNetworks: List<VirtualNetworkConfigDto>?,
+        current: Long?
+    ): Long? = when (serviceState) {
+        ServiceState.UNKNOWN, ServiceState.STOPPED -> null
+        ServiceState.STARTING -> connectedNetworks?.lastOrNull()?.networkId ?: current
+        ServiceState.RUNNING -> connectedNetworks?.let { it.lastOrNull()?.networkId } ?: current
     }
 
     /**
@@ -338,4 +417,15 @@ class NetworkListViewModel @Inject constructor(
         val manager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         return manager.activeNetworkInfo
     }
+
+    /**
+     * 引擎状态快照，用于单次 combine 更新。
+     */
+    private data class EngineSnapshot(
+        val serviceState: ServiceState,
+        val connectedNetworks: List<VirtualNetworkConfigDto>?,
+        val configs: Map<Long, VirtualNetworkConfigDto>?,
+        val nodeStatus: NodeStatusDto?,
+        val nodeId: String?
+    )
 }

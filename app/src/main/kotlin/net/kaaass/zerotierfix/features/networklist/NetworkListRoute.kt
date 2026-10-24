@@ -22,6 +22,7 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 import net.kaaass.zerotierfix.R
+import net.kaaass.zerotierfix.model.dto.NetworkSummary
 import net.kaaass.zerotierfix.ui.common.resolve
 
 /**
@@ -29,18 +30,14 @@ import net.kaaass.zerotierfix.ui.common.resolve
  *
  * @param onAddNetwork 打开添加网络页
  * @param onOpenNetwork 打开网络详情页
- * @param onOpenSettings 打开设置页
  * @param onOpenMoon 打开 Moon 入轨页
- * @param onOpenPeers 打开 Peer 列表页
  * @param viewModel 页面 ViewModel
  */
 @Composable
 fun NetworkListRoute(
     onAddNetwork: () -> Unit,
     onOpenNetwork: (Long) -> Unit,
-    onOpenSettings: () -> Unit,
     onOpenMoon: () -> Unit,
-    onOpenPeers: () -> Unit,
     viewModel: NetworkListViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -88,26 +85,33 @@ fun NetworkListRoute(
         state = state,
         onAddNetwork = onAddNetwork,
         onOpenNetwork = onOpenNetwork,
-        onOpenSettings = onOpenSettings,
         onOpenMoon = onOpenMoon,
-        onOpenPeers = onOpenPeers,
         onNetworkEnabledChange = viewModel::setNetworkEnabled,
         onDeleteNetwork = viewModel::deleteNetwork,
-        onCopyNetworkId = { network ->
-            val clipboard =
-                context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-            clipboard.setPrimaryClip(
-                ClipData.newPlainText(
-                    context.getString(R.string.network_id),
-                    network.networkIdStr ?: ""
-                )
-            )
-            showToast(context, context.getString(R.string.text_copied))
-        },
+        onCopyNetworkId = { network -> copyNetworkId(context, network) },
+        onCopyNodeId = { nodeId -> copyValue(context, R.string.label_node_id, nodeId) },
         onNotificationAlertOpenSettings = viewModel::openNotificationSettings,
         onNotificationAlertDontShowAgain = viewModel::disableNotificationAlert,
         onNotificationAlertDismiss = viewModel::dismissNotificationAlert
     )
+}
+
+/**
+ * 复制网络 ID 并提示。
+ */
+private fun copyNetworkId(context: Context, network: NetworkSummary) {
+    copyValue(context, R.string.label_network_id, network.networkIdStr.orEmpty())
+}
+
+/**
+ * 复制文本并提示。
+ */
+private fun copyValue(context: Context, labelRes: Int, value: String) {
+    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    clipboard.setPrimaryClip(
+        ClipData.newPlainText(context.getString(labelRes), value)
+    )
+    showToast(context, context.getString(R.string.text_copied))
 }
 
 /**

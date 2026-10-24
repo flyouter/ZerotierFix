@@ -2,13 +2,32 @@ package net.kaaass.zerotierfix.features.networklist
 
 import net.kaaass.zerotierfix.model.dto.NetworkSummary
 import net.kaaass.zerotierfix.model.dto.NodeStatusDto
+import net.kaaass.zerotierfix.model.enums.NetworkStatus
 import net.kaaass.zerotierfix.ui.common.UiText
+import net.kaaass.zerotierfix.vpn.engine.ServiceState
+
+/**
+ * 网络列表中的单个条目。
+ *
+ * @property summary 数据库中的网络概要
+ * @property runtimeStatus 引擎实时状态；`null` 表示未连接或尚无实时配置
+ * @property ipAddresses 已按 IPv6 设置过滤的分配地址
+ * @property displayName 展示用网络名：优先数据库名称，其次引擎下发的名称
+ */
+data class NetworkListItem(
+    val summary: NetworkSummary,
+    val runtimeStatus: NetworkStatus?,
+    val ipAddresses: List<String>,
+    val displayName: String?
+)
 
 /**
  * 网络列表页面状态。
  *
  * @property networks 已加入的网络列表
  * @property connectedNetworkId 当前连接的网络 ID；无连接时为 `null`
+ * @property operatingNetworkId 正在连接 / 断开 / 删除的网络 ID；空闲时为 `null`
+ * @property serviceState VPN 服务生命周期状态
  * @property nodeId 本机节点 ID 字符串
  * @property nodeStatus 节点状态；服务未启动时为 `null`
  * @property clientVersion ZeroTier 客户端版本；尚未取得时为 `null`
@@ -17,8 +36,10 @@ import net.kaaass.zerotierfix.ui.common.UiText
  * @property appVersion 应用版本号
  */
 data class NetworkListUiState(
-    val networks: List<NetworkSummary> = emptyList(),
+    val networks: List<NetworkListItem> = emptyList(),
     val connectedNetworkId: Long? = null,
+    val operatingNetworkId: Long? = null,
+    val serviceState: ServiceState = ServiceState.UNKNOWN,
     val nodeId: String? = null,
     val nodeStatus: NodeStatusDto? = null,
     val clientVersion: String? = null,
