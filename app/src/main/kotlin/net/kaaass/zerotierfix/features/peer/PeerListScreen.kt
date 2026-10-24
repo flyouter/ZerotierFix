@@ -93,7 +93,8 @@ fun PeerListScreen(
                 .fillMaxSize()
         ) {
             when {
-                state.isLoading -> LoadingState(
+                // 首次加载与刷新都显示整屏加载态，避免点击刷新后没有任何可见反馈。
+                state.isLoading || state.isRefreshing -> LoadingState(
                     text = stringResource(R.string.peer_loading)
                 )
                 state.error != null && state.peers.isEmpty() -> {

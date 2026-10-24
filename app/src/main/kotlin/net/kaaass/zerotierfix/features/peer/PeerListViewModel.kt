@@ -1,5 +1,7 @@
 package net.kaaass.zerotierfix.features.peer
 
+import android.os.SystemClock
+
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 
@@ -27,7 +29,7 @@ import javax.inject.Inject
  * Peer 列表页面的 ViewModel。
  *
  * 区分服务未运行、节点未就绪与请求失败三种错误，供页面展示可重试的错误态。
- * 下拉刷新最多显示 1 秒加载状态，与原实现一致。
+ * 刷新期间页面显示整屏加载态，并保证至少 [MIN_REFRESH_DURATION_MS] 的可见时长。
  */
 @HiltViewModel
 class PeerListViewModel @Inject constructor(
@@ -53,16 +55,27 @@ class PeerListViewModel @Inject constructor(
     }
 
     /**
-     * 下拉刷新。
+     * 下拉刷新或点击顶栏刷新。
      *
-     * 请求结果返回前最多显示 1 秒加载状态，与原实现的定时器一致。
+     * 刷新状态由请求本身驱动，并在请求结束后保证至少展示
+     * [MIN_REFRESH_DURATION_MS]，避免请求瞬间完成时加载屏一闪而过。
      */
     fun refresh() {
+        if (_uiState.value.isRefreshing) {
+            return
+        }
         _uiState.update { it.copy(isRefreshing = true, error = null) }
-        viewModelScope.launch { requestPeers() }
         viewModelScope.launch {
-            delay(REFRESH_TIMEOUT_MS)
-            _uiState.update { it.copy(isRefreshing = false) }
+            val startedAt = SystemClock.elapsedRealtime()
+            try {
+                requestPeers()
+            } finally {
+                val elapsed = SystemClock.elapsedRealtime() - startedAt
+                if (elapsed < MIN_REFRESH_DURATION_MS) {
+                    delay(MIN_REFRESH_DURATION_MS - elapsed)
+                }
+                _uiState.update { it.copy(isRefreshing = false) }
+            }
         }
     }
 
@@ -81,7 +94,6 @@ class PeerListViewModel @Inject constructor(
         if (serviceState != ServiceState.RUNNING && serviceState != ServiceState.STARTING) {
             _uiState.update {
                 it.copy(
-                    isRefreshing = false,
                     hasLoaded = true,
                     isLoading = false,
                     error = PeerListError.SERVICE_NOT_RUNNING
@@ -93,7 +105,6 @@ class PeerListViewModel @Inject constructor(
             is VpnCommandResult.Success -> _uiState.update {
                 it.copy(
                     peers = result.value,
-                    isRefreshing = false,
                     hasLoaded = true,
                     isLoading = false,
                     error = null
@@ -101,7 +112,6 @@ class PeerListViewModel @Inject constructor(
             }
             VpnCommandResult.ServiceNotRunning -> _uiState.update {
                 it.copy(
-                    isRefreshing = false,
                     hasLoaded = true,
                     isLoading = false,
                     error = PeerListError.SERVICE_NOT_RUNNING
@@ -110,7 +120,6 @@ class PeerListViewModel @Inject constructor(
             VpnCommandResult.NodeNotReady -> {
                 _uiState.update {
                     it.copy(
-                        isRefreshing = false,
                         hasLoaded = true,
                         isLoading = false,
                         error = PeerListError.NODE_NOT_READY
@@ -124,7 +133,6 @@ class PeerListViewModel @Inject constructor(
             }
             is VpnCommandResult.Failure -> _uiState.update {
                 it.copy(
-                    isRefreshing = false,
                     hasLoaded = true,
                     isLoading = false,
                     error = PeerListError.RETRIEVE_FAILED
@@ -134,6 +142,7 @@ class PeerListViewModel @Inject constructor(
     }
 
     companion object {
-        private const val REFRESH_TIMEOUT_MS = 1000L
+        /** 刷新加载屏的最短展示时长。 */
+        private const val MIN_REFRESH_DURATION_MS = 1000L
     }
 }
