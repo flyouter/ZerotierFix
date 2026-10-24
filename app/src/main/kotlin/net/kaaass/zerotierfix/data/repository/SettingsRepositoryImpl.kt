@@ -61,6 +61,10 @@ class SettingsRepositoryImpl @Inject constructor(
         preferences.edit().putBoolean(Constants.PREF_PLANET_USE_CUSTOM, value).apply()
     }
 
+    override fun setStartOnBoot(value: Boolean) {
+        preferences.edit().putBoolean(Constants.PREF_GENERAL_START_ZEROTIER_ON_BOOT, value).apply()
+    }
+
     override fun setNoNotificationAlertDisabled(value: Boolean) {
         preferences.edit().putBoolean(Constants.PREF_DISABLE_NO_NOTIFICATION_ALERT, value).apply()
     }

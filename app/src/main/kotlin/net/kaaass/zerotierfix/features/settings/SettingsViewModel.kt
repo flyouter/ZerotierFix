@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+import net.kaaass.zerotierfix.BuildConfig
 import net.kaaass.zerotierfix.R
 import net.kaaass.zerotierfix.data.repository.SettingsRepository
 import net.kaaass.zerotierfix.di.IoDispatcher
@@ -52,7 +53,9 @@ class SettingsViewModel @Inject constructor(
     @IoDispatcher private val ioDispatcher: CoroutineDispatcher
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(SettingsUiState())
+    private val _uiState = MutableStateFlow(
+        SettingsUiState(appVersion = BuildConfig.VERSION_NAME)
+    )
 
     /** 页面状态。 */
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
@@ -63,17 +66,49 @@ class SettingsViewModel @Inject constructor(
     val effects: SharedFlow<SettingsEffect> = _effects.asSharedFlow()
 
     init {
+        refreshPlanetFileState()
         viewModelScope.launch {
             settingsRepository.settings.collect { settings ->
                 _uiState.update {
                     it.copy(
                         isCellularDataAllowed = settings.isCellularDataAllowed,
                         isIpv6Disabled = settings.isIpv6Disabled,
+                        isStartOnBoot = settings.isStartOnBoot,
                         isPlanetUseCustom = settings.isPlanetUseCustom
                     )
                 }
             }
         }
+    }
+
+    /**
+     * 切换是否在设备启动后自动启动 ZeroTier。
+     *
+     * @param value 是否开启
+     */
+    fun setStartOnBoot(value: Boolean) {
+        settingsRepository.setStartOnBoot(value)
+    }
+
+    /**
+     * 用户取消选择文件时给出轻量提示；若仍没有 planet 文件，则关闭自定义 planet。
+     */
+    fun onFilePickCancelled() {
+        _effects.tryEmit(
+            SettingsEffect.ShowSnackbar(
+                UiText.Resource(R.string.settings_file_pick_cancelled)
+            )
+        )
+        if (!customPlanetFileExists() && settingsRepository.isPlanetUseCustom) {
+            settingsRepository.setPlanetUseCustom(false)
+        }
+    }
+
+    /**
+     * 仅关闭 planet 文件来源对话框，不改变自定义 planet 选项。
+     */
+    fun hidePlanetDialog() {
+        _uiState.update { it.copy(isPlanetDialogVisible = false) }
     }
 
     /**
@@ -110,17 +145,24 @@ class SettingsViewModel @Inject constructor(
     }
 
     /**
-     * 显示 URL 输入对话框。
+     * 显示 URL 输入对话框，并关闭 Planet 来源选择。
      */
     fun openUrlDialog() {
-        _uiState.update { it.copy(isUrlDialogVisible = true) }
+        _uiState.update {
+            it.copy(isPlanetDialogVisible = false, isUrlDialogVisible = true)
+        }
     }
 
     /**
      * 关闭 URL 输入对话框。
+     *
+     * 若用户取消且本地仍没有 planet 文件，则取消“使用自定义 planet”选项。
      */
     fun dismissUrlDialog() {
         _uiState.update { it.copy(isUrlDialogVisible = false) }
+        if (!customPlanetFileExists() && settingsRepository.isPlanetUseCustom) {
+            settingsRepository.setPlanetUseCustom(false)
+        }
     }
 
     /**
@@ -262,6 +304,14 @@ class SettingsViewModel @Inject constructor(
                 )
         }
         dismissPlanetDialog()
+        refreshPlanetFileState()
+    }
+
+    /**
+     * 刷新自定义 planet 文件是否存在。
+     */
+    private fun refreshPlanetFileState() {
+        _uiState.update { it.copy(hasCustomPlanetFile = customPlanetFileExists()) }
     }
 
     /**

@@ -18,12 +18,10 @@ import net.kaaass.zerotierfix.ui.common.resolve
 /**
  * 设置页面的路由层。
  *
- * @param onBack 返回上一页
  * @param viewModel 页面 ViewModel
  */
 @Composable
 fun SettingsRoute(
-    onBack: () -> Unit,
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -35,6 +33,8 @@ fun SettingsRoute(
     ) { uri ->
         if (uri != null) {
             viewModel.setPlanetFromFile(uri)
+        } else {
+            viewModel.onFilePickCancelled()
         }
     }
 
@@ -52,16 +52,19 @@ fun SettingsRoute(
     SettingsScreen(
         state = state,
         snackbarHostState = snackbarHostState,
-        onBack = onBack,
         onSetPlanetUseCustom = viewModel::setPlanetUseCustom,
         onOpenPlanetDialog = viewModel::openPlanetDialog,
         onDismissPlanetDialog = viewModel::dismissPlanetDialog,
-        onSetPlanetFromFile = { filePicker.launch(arrayOf("*/*")) },
+        onSetPlanetFromFile = {
+            viewModel.hidePlanetDialog()
+            filePicker.launch(arrayOf("*/*"))
+        },
         onOpenUrlDialog = viewModel::openUrlDialog,
         onDismissUrlDialog = viewModel::dismissUrlDialog,
         onUrlChanged = viewModel::onUrlChanged,
         onSubmitUrl = { viewModel.setPlanetFromUrl(state.urlText) },
         onSetCellularDataAllowed = viewModel::setCellularDataAllowed,
-        onSetIpv6Disabled = viewModel::setIpv6Disabled
+        onSetIpv6Disabled = viewModel::setIpv6Disabled,
+        onSetStartOnBoot = viewModel::setStartOnBoot
     )
 }

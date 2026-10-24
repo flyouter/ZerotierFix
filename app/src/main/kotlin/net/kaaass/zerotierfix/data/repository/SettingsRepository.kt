@@ -80,6 +80,15 @@ interface SettingsRepository {
     fun setPlanetUseCustom(value: Boolean)
 
     /**
+     * 设置是否在设备启动后自动启动 ZeroTier。
+     *
+     * 线程：同步写入 SharedPreferences，使用 `apply()`。
+     *
+     * @param value 是否开机启动
+     */
+    fun setStartOnBoot(value: Boolean)
+
+    /**
      * 设置是否不再显示无通知权限提示。
      *
      * @param value 是否不再显示

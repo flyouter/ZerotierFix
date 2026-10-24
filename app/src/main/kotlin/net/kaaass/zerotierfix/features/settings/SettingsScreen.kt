@@ -1,36 +1,49 @@
 package net.kaaass.zerotierfix.features.settings
 
-import androidx.compose.foundation.clickable
+import android.content.res.Configuration
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Share
+import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 
 import net.kaaass.zerotierfix.R
-import net.kaaass.zerotierfix.ui.common.BackTopBar
+import net.kaaass.zerotierfix.ui.common.ActionRow
+import net.kaaass.zerotierfix.ui.common.InfoRow
+import net.kaaass.zerotierfix.ui.common.SectionHeader
+import net.kaaass.zerotierfix.ui.common.SettingDivider
+import net.kaaass.zerotierfix.ui.common.SettingsGroup
+import net.kaaass.zerotierfix.ui.common.SwitchRow
+import net.kaaass.zerotierfix.ui.common.ZerotierTopBar
 import net.kaaass.zerotierfix.ui.theme.ZerotierFixTheme
 
 /**
@@ -38,7 +51,6 @@ import net.kaaass.zerotierfix.ui.theme.ZerotierFixTheme
  *
  * @param state 页面状态
  * @param snackbarHostState Snackbar 宿主状态
- * @param onBack 返回
  * @param onSetPlanetUseCustom 切换自定义 planet
  * @param onOpenPlanetDialog 打开 planet 文件来源对话框
  * @param onDismissPlanetDialog 关闭 planet 文件来源对话框
@@ -49,6 +61,7 @@ import net.kaaass.zerotierfix.ui.theme.ZerotierFixTheme
  * @param onSubmitUrl 提交 URL
  * @param onSetCellularDataAllowed 切换移动数据开关
  * @param onSetIpv6Disabled 切换 IPv6 开关
+ * @param onSetStartOnBoot 切换开机自启
  * @param modifier 修饰符
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -56,7 +69,6 @@ import net.kaaass.zerotierfix.ui.theme.ZerotierFixTheme
 fun SettingsScreen(
     state: SettingsUiState,
     snackbarHostState: SnackbarHostState,
-    onBack: () -> Unit,
     onSetPlanetUseCustom: (Boolean) -> Unit,
     onOpenPlanetDialog: () -> Unit,
     onDismissPlanetDialog: () -> Unit,
@@ -67,11 +79,13 @@ fun SettingsScreen(
     onSubmitUrl: () -> Unit,
     onSetCellularDataAllowed: (Boolean) -> Unit,
     onSetIpv6Disabled: (Boolean) -> Unit,
+    onSetStartOnBoot: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Scaffold(
         modifier = modifier,
-        topBar = { BackTopBar(stringResource(R.string.settings), onBack) },
+        containerColor = MaterialTheme.colorScheme.background,
+        topBar = { ZerotierTopBar(stringResource(R.string.settings)) },
         snackbarHost = { SnackbarHost(snackbarHostState) }
     ) { padding ->
         Column(
@@ -79,64 +93,103 @@ fun SettingsScreen(
                 .padding(padding)
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
+                .padding(vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            SectionHeader(stringResource(R.string.planet_settings))
-            SwitchRow(
-                title = stringResource(R.string.use_custom_planet),
-                summary = stringResource(R.string.planet_use_custom_summary),
-                checked = state.isPlanetUseCustom,
-                onCheckedChange = onSetPlanetUseCustom
-            )
-            TextRow(
-                title = stringResource(R.string.set_planet_file),
-                enabled = state.isPlanetUseCustom,
-                onClick = onOpenPlanetDialog
-            )
-            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+            SectionHeader(title = stringResource(R.string.settings_general))
+            SettingsGroup {
+                SwitchRow(
+                    title = stringResource(R.string.settings_start_on_boot),
+                    summary = stringResource(R.string.settings_start_on_boot_summary),
+                    checked = state.isStartOnBoot,
+                    onCheckedChange = onSetStartOnBoot
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
 
-            SectionHeader(stringResource(R.string.preferences_network))
-            SwitchRow(
-                title = stringResource(R.string.preferences_network_use_cell_data),
-                summary = null,
-                checked = state.isCellularDataAllowed,
-                onCheckedChange = onSetCellularDataAllowed
-            )
-            SwitchRow(
-                title = stringResource(R.string.preferences_network_disable_ipv6),
-                summary = stringResource(R.string.preferences_network_disable_ipv6_summary),
-                checked = state.isIpv6Disabled,
-                onCheckedChange = onSetIpv6Disabled
-            )
+            SectionHeader(title = stringResource(R.string.settings_network))
+            SettingsGroup {
+                SwitchRow(
+                    title = stringResource(R.string.preferences_network_use_cell_data),
+                    checked = state.isCellularDataAllowed,
+                    onCheckedChange = onSetCellularDataAllowed
+                )
+                SettingDivider()
+                SwitchRow(
+                    title = stringResource(R.string.preferences_network_disable_ipv6),
+                    summary = stringResource(R.string.preferences_network_disable_ipv6_summary),
+                    checked = state.isIpv6Disabled,
+                    onCheckedChange = onSetIpv6Disabled
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+
+            SectionHeader(title = stringResource(R.string.planet_settings))
+            SettingsGroup {
+                SwitchRow(
+                    title = stringResource(R.string.use_custom_planet),
+                    summary = stringResource(R.string.planet_use_custom_summary),
+                    checked = state.isPlanetUseCustom,
+                    onCheckedChange = onSetPlanetUseCustom,
+                    icon = Icons.Outlined.Star
+                )
+                SettingDivider()
+                ActionRow(
+                    title = stringResource(R.string.set_planet_file),
+                    summary = stringResource(
+                        if (state.hasCustomPlanetFile) {
+                            R.string.settings_planet_file_set
+                        } else {
+                            R.string.settings_planet_file_missing
+                        }
+                    ),
+                    enabled = state.isPlanetUseCustom,
+                    onClick = onOpenPlanetDialog
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+
+            SectionHeader(title = stringResource(R.string.settings_about))
+            SettingsGroup {
+                InfoRow(
+                    label = stringResource(R.string.settings_app_version),
+                    value = state.appVersion,
+                    monospace = true
+                )
+            }
+            Spacer(modifier = Modifier.height(24.dp))
         }
     }
 
     if (state.isPlanetDialogVisible) {
-        AlertDialog(
+        ModalBottomSheet(
             onDismissRequest = onDismissPlanetDialog,
-            title = { Text(stringResource(R.string.load_planet_file)) },
-            text = {
-                Column {
-                    TextRow(
-                        title = stringResource(R.string.file),
-                        subtitle = stringResource(R.string.import_via_file),
-                        enabled = true,
-                        onClick = onSetPlanetFromFile
-                    )
-                    TextRow(
-                        title = stringResource(R.string.url),
-                        subtitle = stringResource(R.string.import_via_url),
-                        enabled = true,
-                        onClick = onOpenUrlDialog
-                    )
-                }
-            },
-            confirmButton = {},
-            dismissButton = {
-                TextButton(onClick = onDismissPlanetDialog) {
-                    Text(stringResource(android.R.string.cancel))
-                }
+            sheetState = rememberModalBottomSheetState()
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 24.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.load_planet_file),
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                )
+                ActionRow(
+                    title = stringResource(R.string.file),
+                    summary = stringResource(R.string.import_via_file),
+                    icon = Icons.Outlined.Share,
+                    onClick = onSetPlanetFromFile
+                )
+                ActionRow(
+                    title = stringResource(R.string.url),
+                    summary = stringResource(R.string.import_via_url),
+                    icon = Icons.Outlined.Edit,
+                    onClick = onOpenUrlDialog
+                )
             }
-        )
+        }
     }
 
     if (state.isUrlDialogVisible) {
@@ -156,12 +209,12 @@ fun SettingsScreen(
             },
             confirmButton = {
                 TextButton(onClick = onSubmitUrl) {
-                    Text(stringResource(android.R.string.ok))
+                    Text(stringResource(R.string.action_save))
                 }
             },
             dismissButton = {
                 TextButton(onClick = onDismissUrlDialog) {
-                    Text(stringResource(android.R.string.cancel))
+                    Text(stringResource(R.string.action_cancel))
                 }
             }
         )
@@ -175,7 +228,7 @@ fun SettingsScreen(
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    CircularProgressIndicator()
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
                     Text(stringResource(R.string.downloading))
                 }
             },
@@ -184,97 +237,19 @@ fun SettingsScreen(
     }
 }
 
-/**
- * 分组标题。
- */
-@Composable
-private fun SectionHeader(title: String) {
-    Text(
-        text = title,
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-        style = MaterialTheme.typography.titleSmall,
-        fontWeight = FontWeight.Bold,
-        color = MaterialTheme.colorScheme.primary
-    )
-}
-
-/**
- * 开关设置行。
- */
-@Composable
-private fun SwitchRow(
-    title: String,
-    summary: String?,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onCheckedChange(!checked) }
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(text = title, style = MaterialTheme.typography.bodyLarge)
-            if (summary != null) {
-                Text(
-                    text = summary,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
-    }
-}
-
-/**
- * 可点击设置行。
- */
-@Composable
-private fun TextRow(
-    title: String,
-    enabled: Boolean,
-    onClick: () -> Unit,
-    subtitle: String? = null
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 12.dp)
-    ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.bodyLarge,
-            color = if (enabled) {
-                MaterialTheme.colorScheme.onSurface
-            } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            }
-        )
-        if (subtitle != null) {
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-    }
-}
-
-@Preview(showBackground = true)
+@Preview(name = "浅色", showBackground = true)
 @Composable
 private fun SettingsScreenPreview() {
     ZerotierFixTheme {
         SettingsScreen(
             state = SettingsUiState(
                 isCellularDataAllowed = true,
-                isPlanetUseCustom = false
+                isStartOnBoot = true,
+                isPlanetUseCustom = true,
+                hasCustomPlanetFile = true,
+                appVersion = "1.0.11+core.1.16.2"
             ),
             snackbarHostState = SnackbarHostState(),
-            onBack = {},
             onSetPlanetUseCustom = {},
             onOpenPlanetDialog = {},
             onDismissPlanetDialog = {},
@@ -284,7 +259,36 @@ private fun SettingsScreenPreview() {
             onUrlChanged = {},
             onSubmitUrl = {},
             onSetCellularDataAllowed = {},
-            onSetIpv6Disabled = {}
+            onSetIpv6Disabled = {},
+            onSetStartOnBoot = {}
+        )
+    }
+}
+
+@Preview(name = "深色", showBackground = true, uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Composable
+private fun SettingsScreenDarkPreview() {
+    ZerotierFixTheme {
+        SettingsScreen(
+            state = SettingsUiState(
+                isCellularDataAllowed = false,
+                isStartOnBoot = false,
+                isPlanetUseCustom = false,
+                hasCustomPlanetFile = false,
+                appVersion = "1.0.11+core.1.16.2"
+            ),
+            snackbarHostState = SnackbarHostState(),
+            onSetPlanetUseCustom = {},
+            onOpenPlanetDialog = {},
+            onDismissPlanetDialog = {},
+            onSetPlanetFromFile = {},
+            onOpenUrlDialog = {},
+            onDismissUrlDialog = {},
+            onUrlChanged = {},
+            onSubmitUrl = {},
+            onSetCellularDataAllowed = {},
+            onSetIpv6Disabled = {},
+            onSetStartOnBoot = {}
         )
     }
 }

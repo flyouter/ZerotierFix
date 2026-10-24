@@ -7,20 +7,26 @@ import net.kaaass.zerotierfix.ui.common.UiText
  *
  * @property isCellularDataAllowed 是否允许移动数据
  * @property isIpv6Disabled 是否禁用 IPv6
+ * @property isStartOnBoot 是否在设备启动后自动启动 ZeroTier
  * @property isPlanetUseCustom 是否使用自定义 planet
+ * @property hasCustomPlanetFile 是否已配置自定义 planet 文件
  * @property isPlanetDialogVisible 是否显示 planet 文件来源对话框
  * @property isUrlDialogVisible 是否显示 URL 输入对话框
  * @property urlText URL 输入值
  * @property isLoadingDialogVisible 是否显示下载进度对话框
+ * @property appVersion 应用版本号
  */
 data class SettingsUiState(
     val isCellularDataAllowed: Boolean = false,
     val isIpv6Disabled: Boolean = false,
+    val isStartOnBoot: Boolean = true,
     val isPlanetUseCustom: Boolean = false,
+    val hasCustomPlanetFile: Boolean = false,
     val isPlanetDialogVisible: Boolean = false,
     val isUrlDialogVisible: Boolean = false,
     val urlText: String = "",
-    val isLoadingDialogVisible: Boolean = false
+    val isLoadingDialogVisible: Boolean = false,
+    val appVersion: String = ""
 )
 
 /**
