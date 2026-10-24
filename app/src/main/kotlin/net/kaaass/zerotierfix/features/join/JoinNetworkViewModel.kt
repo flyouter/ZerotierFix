@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 
 import dagger.hilt.android.lifecycle.HiltViewModel
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -16,14 +17,17 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+import net.kaaass.zerotierfix.R
 import net.kaaass.zerotierfix.data.repository.NetworkRepository
 import net.kaaass.zerotierfix.data.repository.SettingsRepository
 import net.kaaass.zerotierfix.di.IoDispatcher
 import net.kaaass.zerotierfix.model.dto.JoinNetworkRequest
 import net.kaaass.zerotierfix.model.enums.DNSMode
+import net.kaaass.zerotierfix.ui.common.DnsField
+import net.kaaass.zerotierfix.ui.common.UiText
+import net.kaaass.zerotierfix.ui.common.hasInvalidDns
+import net.kaaass.zerotierfix.ui.common.isValidDnsAddress
 import net.kaaass.zerotierfix.util.NetworkIdUtils
-
-import org.apache.commons.validator.routines.InetAddressValidator
 
 import javax.inject.Inject
 
@@ -95,10 +99,15 @@ class JoinNetworkViewModel @Inject constructor(
     /**
      * 切换 DNS 模式。
      *
-     * @param mode DNS 模式持久化值
+     * @param mode DNS 模式
      */
-    fun onDnsModeChanged(mode: Int) {
-        _uiState.update { it.copy(dnsMode = mode) }
+    fun onDnsModeChanged(mode: DNSMode) {
+        _uiState.update { state ->
+            state.copy(
+                dnsMode = mode,
+                hasInvalidDns = state.invalidDnsFor(mode)
+            )
+        }
     }
 
     /**
@@ -108,36 +117,48 @@ class JoinNetworkViewModel @Inject constructor(
      * @param value 输入值
      */
     fun onDnsChanged(field: DnsField, value: String) {
-        _uiState.update {
-            when (field) {
-                DnsField.V4_PRIMARY -> it.copy(dnsV4Primary = value)
-                DnsField.V4_SECONDARY -> it.copy(dnsV4Secondary = value)
-                DnsField.V6_PRIMARY -> it.copy(dnsV6Primary = value)
-                DnsField.V6_SECONDARY -> it.copy(dnsV6Secondary = value)
+        _uiState.update { state ->
+            val updated = when (field) {
+                DnsField.V4_PRIMARY -> state.copy(dnsV4Primary = value)
+                DnsField.V4_SECONDARY -> state.copy(dnsV4Secondary = value)
+                DnsField.V6_PRIMARY -> state.copy(dnsV6Primary = value)
+                DnsField.V6_SECONDARY -> state.copy(dnsV6Secondary = value)
             }
+            updated.copy(
+                hasInvalidDns = hasInvalidDns(
+                    v4Primary = updated.dnsV4Primary,
+                    v4Secondary = updated.dnsV4Secondary,
+                    v6Primary = updated.dnsV6Primary,
+                    v6Secondary = updated.dnsV6Secondary
+                )
+            )
         }
     }
 
     /**
-     * 提交加入网络请求并返回上一页。
+     * 提交加入网络请求。
+     *
+     * 网络已存在或写入失败时通过 Snackbar 提示并停留在当前页；成功后返回上一页。
      *
      * 线程：数据库写入切换到 IO 线程。
      */
     fun join() {
         val state = _uiState.value
-        if (!state.isNetworkIdValid || state.isSubmitting) {
+        if (!state.canSubmit) {
             return
         }
         _uiState.update { it.copy(isSubmitting = true) }
         viewModelScope.launch {
             val networkId = NetworkIdUtils.hexStringToLong(state.networkId)
-            val dnsServers = if (state.dnsMode == DNSMode.CUSTOM_DNS.toInt()) {
+            val dnsServers = if (state.dnsMode == DNSMode.CUSTOM_DNS) {
                 listOf(
-                    state.dnsV4Primary,
-                    state.dnsV4Secondary,
-                    state.dnsV6Primary,
-                    state.dnsV6Secondary
-                ).filter { isValidAddress(it) }
+                    state.dnsV4Primary to DnsField.V4_PRIMARY,
+                    state.dnsV4Secondary to DnsField.V4_SECONDARY,
+                    state.dnsV6Primary to DnsField.V6_PRIMARY,
+                    state.dnsV6Secondary to DnsField.V6_SECONDARY
+                ).filter { (value, field) ->
+                    value.isNotEmpty() && isValidDnsAddress(value, field)
+                }.map { (value, _) -> value }
             } else {
                 emptyList()
             }
@@ -145,44 +166,52 @@ class JoinNetworkViewModel @Inject constructor(
                 networkId = networkId,
                 networkIdStr = state.networkId,
                 isRouteViaZeroTier = state.isRouteViaZeroTier,
-                dnsMode = state.dnsMode,
+                dnsMode = state.dnsMode.toInt(),
                 dnsServers = dnsServers
             )
-            withContext(ioDispatcher) {
-                networkRepository.joinNetwork(request)
+            try {
+                val added = withContext(ioDispatcher) {
+                    networkRepository.joinNetwork(request)
+                }
+                if (added) {
+                    _effects.emit(JoinNetworkEffect.NavigateBack)
+                } else {
+                    _uiState.update { it.copy(isSubmitting = false) }
+                    _effects.emit(
+                        JoinNetworkEffect.ShowSnackbar(
+                            UiText.Resource(R.string.network_already_exists)
+                        )
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isSubmitting = false) }
+                _effects.emit(
+                    JoinNetworkEffect.ShowSnackbar(
+                        UiText.Resource(R.string.join_network_failed)
+                    )
+                )
             }
-            _effects.emit(JoinNetworkEffect.NavigateBack)
         }
     }
 
     /**
-     * 自定义 DNS 输入字段。
+     * 判断指定 DNS 模式下是否存在非法地址。
      */
-    enum class DnsField {
-        /** 第一个 IPv4 地址。 */
-        V4_PRIMARY,
-
-        /** 第二个 IPv4 地址。 */
-        V4_SECONDARY,
-
-        /** 第一个 IPv6 地址。 */
-        V6_PRIMARY,
-
-        /** 第二个 IPv6 地址。 */
-        V6_SECONDARY
-    }
+    private fun JoinNetworkUiState.invalidDnsFor(mode: DNSMode): Boolean =
+        mode == DNSMode.CUSTOM_DNS && hasInvalidDns(
+            v4Primary = dnsV4Primary,
+            v4Secondary = dnsV4Secondary,
+            v6Primary = dnsV6Primary,
+            v6Secondary = dnsV6Secondary
+        )
 
     /**
      * 判断字符是否为 16 进制数字。
      */
     private fun isHexDigit(c: Char): Boolean =
         c.isDigit() || c in 'a'..'f' || c in 'A'..'F'
-
-    /**
-     * 判断地址是否非空且格式合法。
-     */
-    private fun isValidAddress(value: String): Boolean =
-        value.isNotEmpty() && InetAddressValidator.getInstance().isValid(value)
 
     companion object {
         private const val NETWORK_ID_LENGTH = 16
