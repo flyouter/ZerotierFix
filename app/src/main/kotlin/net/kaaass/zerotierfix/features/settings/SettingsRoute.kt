@@ -64,7 +64,6 @@ fun SettingsRoute(
         onUrlChanged = viewModel::onUrlChanged,
         onSubmitUrl = { viewModel.setPlanetFromUrl(state.urlText) },
         onSetCellularDataAllowed = viewModel::setCellularDataAllowed,
-        onSetIpv6Disabled = viewModel::setIpv6Disabled,
-        onSetStartOnBoot = viewModel::setStartOnBoot
+        onSetIpv6Disabled = viewModel::setIpv6Disabled
     )
 }

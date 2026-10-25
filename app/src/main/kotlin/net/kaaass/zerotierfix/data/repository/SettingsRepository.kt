@@ -22,11 +22,6 @@ data class Settings(
     val isPlanetUseCustom: Boolean,
 
     /**
-     * 是否在开机时启动 ZeroTier。
-     */
-    val isStartOnBoot: Boolean,
-
-    /**
      * 是否不再显示“无通知权限”提示。
      */
     val isNoNotificationAlertDisabled: Boolean
@@ -52,9 +47,6 @@ interface SettingsRepository {
     /** 是否使用自定义 planet。 */
     val isPlanetUseCustom: Boolean
 
-    /** 是否开机启动。 */
-    val isStartOnBoot: Boolean
-
     /** 是否不再显示无通知权限提示。 */
     val isNoNotificationAlertDisabled: Boolean
 
@@ -78,15 +70,6 @@ interface SettingsRepository {
      * @param value 是否使用
      */
     fun setPlanetUseCustom(value: Boolean)
-
-    /**
-     * 设置是否在设备启动后自动启动 ZeroTier。
-     *
-     * 线程：同步写入 SharedPreferences，使用 `apply()`。
-     *
-     * @param value 是否开机启动
-     */
-    fun setStartOnBoot(value: Boolean)
 
     /**
      * 设置是否不再显示无通知权限提示。

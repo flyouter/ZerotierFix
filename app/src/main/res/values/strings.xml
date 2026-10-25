@@ -52,8 +52,6 @@
     <string name="no_dns_tab_title">No DNS</string>
     <string name="no_dns_text">DNS settings will not be configured.</string>
     <string name="planet_settings">Planet Settings</string>
-    <string name="preferences_general">General Settings</string>
-    <string name="preferences_general_start_on_boot">Start ZeroTier Fix on Device Startup</string>
     <string name="preferences_network">Network Settings</string>
     <string name="preferences_network_auto_rejoin">Automatically Re-join Networks on Start</string>
     <string name="preferences_network_disable_ipv6">Disable IPv6</string>
@@ -227,11 +225,8 @@
     <string name="moon_manual_add">Enter address manually</string>
     <string name="moon_import_file_action">Import from file</string>
 
-    <string name="settings_general">General</string>
     <string name="settings_network">Network</string>
     <string name="settings_about">About</string>
-    <string name="settings_start_on_boot">Start on device boot</string>
-    <string name="settings_start_on_boot_summary">Start ZeroTier automatically after the device boots.</string>
     <string name="settings_planet_file_set">Planet file configured</string>
     <string name="settings_planet_file_missing">No planet file selected</string>
     <string name="settings_file_pick_cancelled">File selection cancelled.</string>

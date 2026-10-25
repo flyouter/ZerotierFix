@@ -51,8 +51,6 @@
     <string name="no_dns_tab_title">无 DNS</string>
     <string name="no_dns_text">将不会配置 DNS。</string>
     <string name="planet_settings">Planet 设置</string>
-    <string name="preferences_general">通用设置</string>
-    <string name="preferences_general_start_on_boot">开机时启动 ZeroTier Fix</string>
     <string name="preferences_network">网络设置</string>
     <string name="preferences_network_auto_rejoin">打开时自动重新加入网络</string>
     <string name="preferences_network_disable_ipv6">禁用 IPv6</string>
@@ -225,11 +223,8 @@
     <string name="moon_manual_add">手动输入地址</string>
     <string name="moon_import_file_action">从文件导入</string>
 
-    <string name="settings_general">通用</string>
     <string name="settings_network">网络</string>
     <string name="settings_about">关于</string>
-    <string name="settings_start_on_boot">开机自启</string>
-    <string name="settings_start_on_boot_summary">设备启动后自动启动 ZeroTier</string>
     <string name="settings_planet_file_set">Planet 文件已配置</string>
     <string name="settings_planet_file_missing">尚未选择 Planet 文件</string>
     <string name="settings_file_pick_cancelled">已取消选择文件</string>

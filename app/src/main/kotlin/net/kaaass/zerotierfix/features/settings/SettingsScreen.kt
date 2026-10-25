@@ -61,7 +61,6 @@ import net.kaaass.zerotierfix.ui.theme.ZerotierFixTheme
  * @param onSubmitUrl 提交 URL
  * @param onSetCellularDataAllowed 切换移动数据开关
  * @param onSetIpv6Disabled 切换 IPv6 开关
- * @param onSetStartOnBoot 切换开机自启
  * @param modifier 修饰符
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -79,7 +78,6 @@ fun SettingsScreen(
     onSubmitUrl: () -> Unit,
     onSetCellularDataAllowed: (Boolean) -> Unit,
     onSetIpv6Disabled: (Boolean) -> Unit,
-    onSetStartOnBoot: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Scaffold(
@@ -96,17 +94,6 @@ fun SettingsScreen(
                 .padding(vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            SectionHeader(title = stringResource(R.string.settings_general))
-            SettingsGroup {
-                SwitchRow(
-                    title = stringResource(R.string.settings_start_on_boot),
-                    summary = stringResource(R.string.settings_start_on_boot_summary),
-                    checked = state.isStartOnBoot,
-                    onCheckedChange = onSetStartOnBoot
-                )
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-
             SectionHeader(title = stringResource(R.string.settings_network))
             SettingsGroup {
                 SwitchRow(
@@ -244,7 +231,6 @@ private fun SettingsScreenPreview() {
         SettingsScreen(
             state = SettingsUiState(
                 isCellularDataAllowed = true,
-                isStartOnBoot = true,
                 isPlanetUseCustom = true,
                 hasCustomPlanetFile = true,
                 appVersion = "1.0.11+core.1.16.2"
@@ -259,8 +245,7 @@ private fun SettingsScreenPreview() {
             onUrlChanged = {},
             onSubmitUrl = {},
             onSetCellularDataAllowed = {},
-            onSetIpv6Disabled = {},
-            onSetStartOnBoot = {}
+            onSetIpv6Disabled = {}
         )
     }
 }
@@ -272,7 +257,6 @@ private fun SettingsScreenDarkPreview() {
         SettingsScreen(
             state = SettingsUiState(
                 isCellularDataAllowed = false,
-                isStartOnBoot = false,
                 isPlanetUseCustom = false,
                 hasCustomPlanetFile = false,
                 appVersion = "1.0.11+core.1.16.2"
@@ -287,8 +271,7 @@ private fun SettingsScreenDarkPreview() {
             onUrlChanged = {},
             onSubmitUrl = {},
             onSetCellularDataAllowed = {},
-            onSetIpv6Disabled = {},
-            onSetStartOnBoot = {}
+            onSetIpv6Disabled = {}
         )
     }
 }

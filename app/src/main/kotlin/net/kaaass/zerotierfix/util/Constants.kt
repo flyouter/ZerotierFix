@@ -17,9 +17,6 @@ object Constants {
     /** 是否禁用 IPv6 的偏好键。 */
     const val PREF_NETWORK_DISABLE_IPV6 = "network_disable_ipv6"
 
-    /** 是否开机启动 ZeroTier 的偏好键。 */
-    const val PREF_GENERAL_START_ZEROTIER_ON_BOOT = "general_start_zerotier_on_boot"
-
     /** 是否禁用“无通知”提示的偏好键。 */
     const val PREF_DISABLE_NO_NOTIFICATION_ALERT = "disable_no_notification_alert"
 

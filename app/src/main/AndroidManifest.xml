@@ -75,14 +75,6 @@
             android:launchMode="singleTop"
             android:taskAffinity="net.kaaass.zerotierfix.consent"
             android:theme="@style/Theme.ZerotierFix.Transparent" />
-
-        <receiver
-            android:name=".service.StartupReceiver"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-            </intent-filter>
-        </receiver>
     </application>
 
 </manifest>

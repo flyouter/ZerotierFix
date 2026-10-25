@@ -43,9 +43,6 @@ class SettingsRepositoryImpl @Inject constructor(
     override val isPlanetUseCustom: Boolean
         get() = preferences.getBoolean(Constants.PREF_PLANET_USE_CUSTOM, false)
 
-    override val isStartOnBoot: Boolean
-        get() = preferences.getBoolean(Constants.PREF_GENERAL_START_ZEROTIER_ON_BOOT, true)
-
     override val isNoNotificationAlertDisabled: Boolean
         get() = preferences.getBoolean(Constants.PREF_DISABLE_NO_NOTIFICATION_ALERT, false)
 
@@ -59,10 +56,6 @@ class SettingsRepositoryImpl @Inject constructor(
 
     override fun setPlanetUseCustom(value: Boolean) {
         preferences.edit().putBoolean(Constants.PREF_PLANET_USE_CUSTOM, value).apply()
-    }
-
-    override fun setStartOnBoot(value: Boolean) {
-        preferences.edit().putBoolean(Constants.PREF_GENERAL_START_ZEROTIER_ON_BOOT, value).apply()
     }
 
     override fun setNoNotificationAlertDisabled(value: Boolean) {
@@ -89,7 +82,6 @@ class SettingsRepositoryImpl @Inject constructor(
         isCellularDataAllowed = isCellularDataAllowed,
         isIpv6Disabled = isIpv6Disabled,
         isPlanetUseCustom = isPlanetUseCustom,
-        isStartOnBoot = isStartOnBoot,
         isNoNotificationAlertDisabled = isNoNotificationAlertDisabled
     )
 

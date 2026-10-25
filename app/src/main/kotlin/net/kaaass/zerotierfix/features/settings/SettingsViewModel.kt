@@ -74,21 +74,11 @@ class SettingsViewModel @Inject constructor(
                     it.copy(
                         isCellularDataAllowed = settings.isCellularDataAllowed,
                         isIpv6Disabled = settings.isIpv6Disabled,
-                        isStartOnBoot = settings.isStartOnBoot,
                         isPlanetUseCustom = settings.isPlanetUseCustom
                     )
                 }
             }
         }
-    }
-
-    /**
-     * 切换是否在设备启动后自动启动 ZeroTier。
-     *
-     * @param value 是否开启
-     */
-    fun setStartOnBoot(value: Boolean) {
-        settingsRepository.setStartOnBoot(value)
     }
 
     /**
