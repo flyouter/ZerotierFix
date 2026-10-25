@@ -7,11 +7,11 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 import net.kaaass.zerotierfix.ui.common.resolve
 
@@ -24,7 +24,10 @@ import net.kaaass.zerotierfix.ui.common.resolve
 fun SettingsRoute(
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
-    val state by viewModel.uiState.collectAsStateWithLifecycle()
+    // 设置页是常驻页面，且状态源只是 ViewModel 的 StateFlow，这里不按导航条目的
+    // 生命周期收集：预测性返回后条目的生命周期可能停留在非活跃状态，会导致开关
+    // 点击后界面不再刷新。
+    val state by viewModel.uiState.collectAsState()
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
 

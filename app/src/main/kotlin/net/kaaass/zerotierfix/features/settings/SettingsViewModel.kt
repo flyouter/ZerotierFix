@@ -97,6 +97,7 @@ class SettingsViewModel @Inject constructor(
                     settingsRepository.settings.value.isPlanetUseCustom
                 ) {
                     settingsRepository.setPlanetUseCustom(false)
+                    _uiState.update { it.copy(isPlanetUseCustom = false) }
                 }
             }
         }
@@ -118,6 +119,8 @@ class SettingsViewModel @Inject constructor(
      */
     fun setPlanetUseCustom(enabled: Boolean) {
         settingsRepository.setPlanetUseCustom(enabled)
+        // 同步刷新界面状态，避免依赖偏好监听回调的时机。
+        _uiState.update { it.copy(isPlanetUseCustom = enabled) }
         if (!enabled) {
             return
         }
@@ -149,6 +152,7 @@ class SettingsViewModel @Inject constructor(
             withContext(NonCancellable + ioDispatcher) {
                 if (!customPlanetFileExists()) {
                     settingsRepository.setPlanetUseCustom(false)
+                    _uiState.update { it.copy(isPlanetUseCustom = false) }
                 }
             }
         }
@@ -177,6 +181,7 @@ class SettingsViewModel @Inject constructor(
                     settingsRepository.settings.value.isPlanetUseCustom
                 ) {
                     settingsRepository.setPlanetUseCustom(false)
+                    _uiState.update { it.copy(isPlanetUseCustom = false) }
                 }
             }
         }
@@ -198,6 +203,8 @@ class SettingsViewModel @Inject constructor(
      */
     fun setCellularDataAllowed(value: Boolean) {
         settingsRepository.setCellularDataAllowed(value)
+        // 同步刷新界面状态，避免依赖偏好监听回调的时机。
+        _uiState.update { it.copy(isCellularDataAllowed = value) }
     }
 
     /**
@@ -207,6 +214,8 @@ class SettingsViewModel @Inject constructor(
      */
     fun setIpv6Disabled(value: Boolean) {
         settingsRepository.setIpv6Disabled(value)
+        // 同步刷新界面状态，避免依赖偏好监听回调的时机。
+        _uiState.update { it.copy(isIpv6Disabled = value) }
     }
 
     /**
@@ -335,8 +344,12 @@ class SettingsViewModel @Inject constructor(
             // 自愈：上次清理可能被进程终止打断，避免留下“已启用但没有文件”的状态。
             if (!exists && wasEnabled) {
                 settingsRepository.setPlanetUseCustom(false)
+                _uiState.update {
+                    it.copy(hasCustomPlanetFile = exists, isPlanetUseCustom = false)
+                }
+            } else {
+                _uiState.update { it.copy(hasCustomPlanetFile = exists) }
             }
-            _uiState.update { it.copy(hasCustomPlanetFile = exists) }
         }
     }
 
