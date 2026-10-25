@@ -57,6 +57,7 @@
     <string name="preferences_network_disable_ipv6">Disable IPv6</string>
     <string name="preferences_network_disable_ipv6_summary">You will need to disconnect &amp; reconnect for this setting to take effect.</string>
     <string name="preferences_network_use_cell_data">Use Cellular Data</string>
+    <string name="preferences_network_use_cell_data_summary">When off, traffic on cellular bypasses the ZeroTier exit node and uses the mobile network directly.</string>
     <string name="reset_planet">Reset Planet</string>
     <string name="settings">Settings</string>
     <string name="status_label">Status:</string>
@@ -65,7 +66,6 @@
     <string name="status_offline">OFFLINE</string>
     <string name="status_online">ONLINE</string>
     <string name="toast_no_network">No Network Connectivity.  ZeroTier cannot start.</string>
-    <string name="toast_mobile_data">Currently using mobile data.  Enable \"Use Cellular Data\" in order to start ZeroTier.</string>
     <string name="menu_peers">Peers</string>
     <string name="menu_orbit">Orbit</string>
     <string name="enabled">Enabled</string>

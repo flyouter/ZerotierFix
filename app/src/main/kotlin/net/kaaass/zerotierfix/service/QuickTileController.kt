@@ -26,7 +26,6 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 import net.kaaass.zerotierfix.R
 import net.kaaass.zerotierfix.data.repository.NetworkRepository
-import net.kaaass.zerotierfix.data.repository.SettingsRepository
 import net.kaaass.zerotierfix.di.IoDispatcher
 import net.kaaass.zerotierfix.model.dto.NetworkSummary
 import net.kaaass.zerotierfix.util.NetworkInfoUtils
@@ -57,7 +56,6 @@ import javax.inject.Singleton
 class QuickTileController @Inject constructor(
     @ApplicationContext private val context: Context,
     private val networkRepository: NetworkRepository,
-    private val settingsRepository: SettingsRepository,
     private val vpnEngine: VpnEngine,
     @IoDispatcher private val ioDispatcher: CoroutineDispatcher
 ) {
@@ -331,29 +329,20 @@ class QuickTileController @Inject constructor(
     }
 
     /**
-     * 检查当前网络环境是否允许建立 VPN。
+     * 检查当前是否有可用网络。
      *
-     * @return 允许时返回 `true`；否则提示并返回 `false`
+     * 移动网络下是否允许 ZeroTier 出口由服务侧的出口策略处理，这里不再拦截。
+     *
+     * @return 有网络时返回 `true`；否则提示并返回 `false`
      */
     private fun checkNetworkAvailable(): Boolean {
-        val messageRes = when (NetworkInfoUtils.getNetworkInfoCurrentConnection(context)) {
-            NetworkInfoUtils.CurrentConnection.CONNECTION_NONE ->
-                R.string.toast_no_network
-
-            NetworkInfoUtils.CurrentConnection.CONNECTION_MOBILE ->
-                if (!settingsRepository.isCellularDataAllowed) {
-                    R.string.toast_mobile_data
-                } else {
-                    null
-                }
-
-            NetworkInfoUtils.CurrentConnection.CONNECTION_OTHER -> null
+        if (NetworkInfoUtils.getNetworkInfoCurrentConnection(context) !=
+            NetworkInfoUtils.CurrentConnection.CONNECTION_NONE
+        ) {
+            return true
         }
-        if (messageRes != null) {
-            toast(messageRes)
-            return false
-        }
-        return true
+        toast(R.string.toast_no_network)
+        return false
     }
 
     private fun toast(messageRes: Int) {

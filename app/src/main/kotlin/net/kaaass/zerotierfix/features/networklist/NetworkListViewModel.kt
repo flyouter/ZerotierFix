@@ -330,15 +330,6 @@ class NetworkListViewModel @Inject constructor(
             refreshNetworks()
             return
         }
-        if (!settingsRepository.isCellularDataAllowed &&
-            activeNetwork.type == ConnectivityManager.TYPE_MOBILE
-        ) {
-            _effects.emit(
-                NetworkListEffect.ShowToast(UiText.Resource(R.string.toast_mobile_data))
-            )
-            refreshNetworks()
-            return
-        }
 
         withContext(ioDispatcher) {
             networkRepository.setLastActivated(network.networkId)

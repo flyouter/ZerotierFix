@@ -102,6 +102,13 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
         TunnelConfigurator(this, networkRepository)
     }
 
+    /** 移动网络出口策略；网络或设置变化时静默重建隧道。 */
+    private val networkPolicy by lazy {
+        NetworkPolicyController(this, settingsRepository, serviceScope) {
+            reconfigureForCellularPolicy()
+        }
+    }
+
     private val stopStateLock = Any()
 
     /** 是否已请求停止；跨线程读取，必须使用 volatile。 */
@@ -258,7 +265,6 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
         this.networkId = targetNetworkId
 
         // 检查当前的网络环境
-        val useCellularData = settingsRepository.isCellularDataAllowed
         this.disableIPv6 = settingsRepository.isIpv6Disabled
         val currentNetworkInfo = NetworkInfoUtils.getNetworkInfoCurrentConnection(this)
 
@@ -268,15 +274,11 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
             markServiceStopped()
             stopSelf(this.mStartID)
             return Service.START_NOT_STICKY
-        } else if (currentNetworkInfo == NetworkInfoUtils.CurrentConnection.CONNECTION_MOBILE &&
-            !useCellularData
-        ) {
-            // 使用移动网络，但未在设置中允许移动网络访问
-            Toast.makeText(this, R.string.toast_mobile_data, Toast.LENGTH_LONG).show()
-            markServiceStopped()
-            stopSelf(this.mStartID)
-            return Service.START_NOT_STICKY
         }
+
+        // 移动网络下是否允许 ZeroTier 出口由 NetworkPolicyController 静默处理：
+        // 服务照常启动，只跳过默认路由，不再弹提示或阻止启动。
+        networkPolicy.start()
 
         // 启动 ZT 服务
         synchronized(this) {
@@ -428,6 +430,7 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
         } catch (e: Exception) {
             Log.e(TAG, "stopZeroTier failed", e)
         } finally {
+            networkPolicy.stop()
             store.setServiceState(ServiceState.STOPPED)
             store.setConnectedNetworks(null)
             store.clearVirtualNetworkConfigs()
@@ -839,11 +842,26 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
     private fun markServiceStopped() {
         // 启动失败后同样置位，阻止迟到的网络配置回调重新建立隧道。
         this.stopping = true
+        networkPolicy.stop()
         store.setServiceState(ServiceState.STOPPED)
         store.setNodeStatus(null)
         store.setConnectedNetworks(null)
         store.clearVirtualNetworkConfigs()
         notificationController.leaveForeground()
+    }
+
+    /**
+     * 移动网络出口策略变化后重建隧道。
+     *
+     * 只有该网络启用了“通过 ZeroTier 路由”时才安装默认路由，出口策略才会
+     * 影响隧道配置；否则跳过，避免 Wi-Fi 与移动网络切换时无谓重建。
+     */
+    private fun reconfigureForCellularPolicy() {
+        val networkId = this.networkId
+        if (networkRepository.getNetworkConfig(networkId)?.isRouteViaZeroTier != true) {
+            return
+        }
+        reconfigureNetwork(networkId)
     }
 
     /**
@@ -853,7 +871,11 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
      * @return 配置成功返回 `true`
      */
     private fun updateTunnelConfig(network: NetworkSummary): Boolean =
-        tunnelConfigurator.configure(network, this.disableIPv6)
+        tunnelConfigurator.configure(
+            network,
+            this.disableIPv6,
+            networkPolicy.isDefaultRouteAllowed
+        )
 
     override val vpnService: VpnService
         get() = this

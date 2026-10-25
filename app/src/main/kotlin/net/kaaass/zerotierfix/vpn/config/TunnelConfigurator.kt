@@ -116,9 +116,15 @@ class TunnelConfigurator(
      *
      * @param network 数据库中的网络摘要
      * @param disableIpv6 是否禁用 IPv6
+     * @param allowDefaultRoute 是否允许安装默认路由（ZeroTier 出口点）；
+     *   为 `false` 时跳过 `0.0.0.0/0`、`::/0`，流量直接走物理网络
      * @return 配置成功返回 `true`；无可用地址或建立失败返回 `false`
      */
-    fun configure(network: NetworkSummary, disableIpv6: Boolean): Boolean {
+    fun configure(
+        network: NetworkSummary,
+        disableIpv6: Boolean,
+        allowDefaultRoute: Boolean
+    ): Boolean {
         // 停止流程已开始：不得再建立隧道，否则会在停止后重新拉起 VPN。
         if (host.isStopping) {
             Log.i(TAG, "Service is stopping; skip tunnel configuration")
@@ -230,6 +236,11 @@ class TunnelConfigurator(
                             (viaAddress != v4Loopback && viaAddress != v6Loopback)
                         )
                     if (!isDisabledV6Route && shouldRouteToZerotier) {
+                        // targetPort 为 0 表示默认路由，即经 ZeroTier 出口点转发全部流量。
+                        if (targetPort == 0 && !allowDefaultRoute) {
+                            Log.i(TAG, "Skip default route: ZeroTier exit not allowed")
+                            continue
+                        }
                         builder.addRoute(viaAddress!!, targetPort)
                         val route = Route(viaAddress, targetPort)
                         if (via != null) {

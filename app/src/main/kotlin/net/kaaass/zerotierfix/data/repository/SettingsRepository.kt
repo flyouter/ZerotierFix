@@ -7,7 +7,9 @@ import kotlinx.coroutines.flow.StateFlow
  */
 data class Settings(
     /**
-     * 是否允许使用移动数据启动 VPN。
+     * 是否允许在移动网络下通过 ZeroTier 出口路由流量。
+     *
+     * 为 `false` 时 VPN 仍可运行，但不安装默认路由（`0.0.0.0/0`、`::/0`）。
      */
     val isCellularDataAllowed: Boolean,
 
@@ -38,7 +40,7 @@ interface SettingsRepository {
     /** 设置快照，随 SharedPreferences 变化更新。 */
     val settings: StateFlow<Settings>
 
-    /** 是否允许使用移动数据。 */
+    /** 是否允许在移动网络下通过 ZeroTier 出口路由流量。 */
     val isCellularDataAllowed: Boolean
 
     /** 是否禁用 IPv6。 */
@@ -51,7 +53,7 @@ interface SettingsRepository {
     val isNoNotificationAlertDisabled: Boolean
 
     /**
-     * 设置是否允许使用移动数据。
+     * 设置是否允许在移动网络下通过 ZeroTier 出口路由流量。
      *
      * @param value 是否允许
      */

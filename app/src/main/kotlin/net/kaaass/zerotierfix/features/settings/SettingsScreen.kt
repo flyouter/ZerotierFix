@@ -98,6 +98,7 @@ fun SettingsScreen(
             SettingsGroup {
                 SwitchRow(
                     title = stringResource(R.string.preferences_network_use_cell_data),
+                    summary = stringResource(R.string.preferences_network_use_cell_data_summary),
                     checked = state.isCellularDataAllowed,
                     onCheckedChange = onSetCellularDataAllowed
                 )
