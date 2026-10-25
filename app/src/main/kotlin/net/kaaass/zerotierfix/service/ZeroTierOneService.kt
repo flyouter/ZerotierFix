@@ -340,6 +340,10 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
             } catch (e: Exception) {
                 Log.e(TAG, e.toString(), e)
                 return failStart(startId)
+            } catch (e: LinkageError) {
+                // System.loadLibrary()/JNI 初始化失败属于 Error，不会被 Exception 捕获。
+                Log.e(TAG, "Native library initialization failed", e)
+                return failStart(startId)
             }
         }
         store.setServiceState(ServiceState.RUNNING)
