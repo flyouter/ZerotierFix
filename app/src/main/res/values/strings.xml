@@ -188,6 +188,7 @@
     <string name="toast_network_deleted">Network deleted.</string>
     <string name="toast_connect_failed">Failed to connect. Check the VPN service and try again.</string>
     <string name="toast_vpn_permission_denied">VPN permission was not granted.</string>
+    <string name="toast_local_network_permission_denied">Local network permission was not granted. LAN peers may be unreachable.</string>
 
     <string name="network_id_hint">16 hexadecimal characters</string>
     <string name="network_id_remaining">%1$d characters remaining</string>

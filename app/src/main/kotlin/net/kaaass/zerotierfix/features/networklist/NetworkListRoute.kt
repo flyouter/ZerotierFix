@@ -1,11 +1,14 @@
 package net.kaaass.zerotierfix.features.networklist
 
+import android.Manifest
 import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.VpnService
+import android.os.Build
 import android.widget.Toast
 
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -17,6 +20,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.core.content.ContextCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -42,7 +47,10 @@ fun NetworkListRoute(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    // 在组合期解析，避免回调里用 LocalContext 读资源（Configuration 变更后可能取到旧值）
+    val localNetworkDeniedMessage = stringResource(R.string.toast_local_network_permission_denied)
     var pendingNetworkId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var pendingLocalNetworkNetworkId by rememberSaveable { mutableStateOf<Long?>(null) }
 
     val vpnConsentLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -54,6 +62,34 @@ fun NetworkListRoute(
         }
     }
 
+    /** 发起系统 VPN 授权；已授权时直接继续连接。 */
+    val requestVpnConsent: (Long) -> Unit = { networkId ->
+        val intent = VpnService.prepare(context)
+        if (intent == null) {
+            viewModel.onVpnConsentResult(networkId, true)
+        } else {
+            pendingNetworkId = networkId
+            vpnConsentLauncher.launch(intent)
+        }
+    }
+
+    // Android 17 起访问局域网需要运行时权限。权限结果不阻断连接：
+    // 拒绝后仍继续 VPN 授权，只提示局域网直连可能不可用。
+    val localNetworkPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (!granted) {
+            showToast(
+                context,
+                localNetworkDeniedMessage
+            )
+        }
+        pendingLocalNetworkNetworkId?.let { networkId ->
+            pendingLocalNetworkNetworkId = null
+            requestVpnConsent(networkId)
+        }
+    }
+
     LaunchedEffect(Unit) {
         viewModel.effects.collect { effect ->
             when (effect) {
@@ -62,12 +98,19 @@ fun NetworkListRoute(
                     effect.text.resolve(context)
                 )
                 is NetworkListEffect.RequestVpnConsent -> {
-                    val intent = VpnService.prepare(context)
-                    if (intent == null) {
-                        viewModel.onVpnConsentResult(effect.networkId, true)
+                    val needsLocalNetworkPermission =
+                        Build.VERSION.SDK_INT >= 37 &&
+                            ContextCompat.checkSelfPermission(
+                                context,
+                                Manifest.permission.ACCESS_LOCAL_NETWORK
+                            ) != PackageManager.PERMISSION_GRANTED
+                    if (needsLocalNetworkPermission) {
+                        pendingLocalNetworkNetworkId = effect.networkId
+                        localNetworkPermissionLauncher.launch(
+                            Manifest.permission.ACCESS_LOCAL_NETWORK
+                        )
                     } else {
-                        pendingNetworkId = effect.networkId
-                        vpnConsentLauncher.launch(intent)
+                        requestVpnConsent(effect.networkId)
                     }
                 }
                 NetworkListEffect.OpenNotificationSettings ->

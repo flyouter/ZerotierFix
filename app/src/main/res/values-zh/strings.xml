@@ -186,6 +186,7 @@
     <string name="toast_network_deleted">网络已删除</string>
     <string name="toast_connect_failed">连接失败，请检查 VPN 服务后重试</string>
     <string name="toast_vpn_permission_denied">未授予 VPN 权限，无法连接网络</string>
+    <string name="toast_local_network_permission_denied">未授予本地网络权限，局域网设备可能无法访问</string>
 
     <string name="network_id_hint">16 位十六进制字符</string>
     <string name="network_id_remaining">还需 %1$d 位</string>
