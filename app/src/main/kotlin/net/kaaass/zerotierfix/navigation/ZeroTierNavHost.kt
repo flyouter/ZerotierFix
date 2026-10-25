@@ -2,6 +2,8 @@ package net.kaaass.zerotierfix.navigation
 
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.expandVertically
@@ -47,6 +49,9 @@ private const val TOP_LEVEL_ENTER_MS = 220
 /** 顶层 Tab 切换的淡出时长（毫秒）。 */
 private const val TOP_LEVEL_EXIT_MS = 160
 
+/** 扫码页转场时长（毫秒）。 */
+private const val SCAN_TRANSITION_DURATION_MS = 150
+
 /**
  * 应用导航图。
  *
@@ -65,6 +70,28 @@ fun ZeroTierNavHost(navController: NavHostController = rememberNavController()) 
     val slideFade = remember { tween<Float>(NAV_TRANSITION_DURATION_MS) }
     val topEnter = remember { tween<Float>(TOP_LEVEL_ENTER_MS) }
     val topExit = remember { tween<Float>(TOP_LEVEL_EXIT_MS) }
+
+    // 预测性返回会按手势进度 seek 这两个转场，因此只能使用有限时长动画。
+    val popEnterAnimation: AnimatedContentTransitionScope<NavBackStackEntry>.() -> EnterTransition = {
+        if (isTopLevelTransition(initialState, targetState)) {
+            fadeIn(topEnter)
+        } else {
+            slideIntoContainer(
+                towards = AnimatedContentTransitionScope.SlideDirection.End,
+                animationSpec = slideDuration
+            ) + fadeIn(slideFade)
+        }
+    }
+    val popExitAnimation: AnimatedContentTransitionScope<NavBackStackEntry>.() -> ExitTransition = {
+        if (isTopLevelTransition(initialState, targetState)) {
+            fadeOut(topExit)
+        } else {
+            slideOutOfContainer(
+                towards = AnimatedContentTransitionScope.SlideDirection.End,
+                animationSpec = slideDuration
+            ) + fadeOut(slideFade)
+        }
+    }
 
     val onSelectTopLevel: (ZeroTierTopLevelDestination) -> Unit = { destination ->
         navController.navigate(destination.route) {
@@ -115,24 +142,16 @@ fun ZeroTierNavHost(navController: NavHostController = rememberNavController()) 
                             ) + fadeOut(slideFade)
                         }
                     },
-                    popEnterTransition = {
-                        if (isTopLevelTransition(initialState, targetState)) {
-                            fadeIn(topEnter)
+                    popEnterTransition = popEnterAnimation,
+                    popExitTransition = popExitAnimation,
+                    predictivePopEnterTransition = { popEnterAnimation() },
+                    predictivePopExitTransition = {
+                        // composable() 在 2.10.2 没有 predictive 参数，这里镜像扫码页
+                        // 在 popExitTransition 里的淡出覆盖，避免预览与提交动画不一致。
+                        if (initialState.destination.route == ZeroTierRoutes.SCAN) {
+                            fadeOut(tween(SCAN_TRANSITION_DURATION_MS))
                         } else {
-                            slideIntoContainer(
-                                towards = AnimatedContentTransitionScope.SlideDirection.End,
-                                animationSpec = slideDuration
-                            ) + fadeIn(slideFade)
-                        }
-                    },
-                    popExitTransition = {
-                        if (isTopLevelTransition(initialState, targetState)) {
-                            fadeOut(topExit)
-                        } else {
-                            slideOutOfContainer(
-                                towards = AnimatedContentTransitionScope.SlideDirection.End,
-                                animationSpec = slideDuration
-                            ) + fadeOut(slideFade)
+                            popExitAnimation()
                         }
                     }
                 ) {
@@ -154,8 +173,8 @@ fun ZeroTierNavHost(navController: NavHostController = rememberNavController()) 
                     }
                     composable(
                         route = ZeroTierRoutes.SCAN,
-                        enterTransition = { fadeIn(tween(150)) },
-                        popExitTransition = { fadeOut(tween(150)) }
+                        enterTransition = { fadeIn(tween(SCAN_TRANSITION_DURATION_MS)) },
+                        popExitTransition = { fadeOut(tween(SCAN_TRANSITION_DURATION_MS)) }
                     ) {
                         NetworkScanRoute(
                             onBack = { navController.popBackStack() },
