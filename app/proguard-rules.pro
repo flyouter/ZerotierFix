@@ -19,3 +19,10 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# ZeroTier JNI：externals/core/java/jni/ZT_jnicache.cpp 通过 FindClass/GetMethodID
+# 按类名与方法名查找这些类，混淆或裁剪会导致节点初始化直接失败。
+-keep class com.zerotier.sdk.** { *; }
+
+# 兜底：保留所有 native 方法名（类名已由上一条保留）
+-keepclasseswithmembernames class * { native <methods>; }

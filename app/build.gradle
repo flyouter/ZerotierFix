@@ -27,8 +27,16 @@ android {
 
     buildTypes {
         release {
-            minifyEnabled = false
+            minifyEnabled = true
+            shrinkResources = true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    // minSdk >= 28 时 AGP 默认把 dex 以未压缩方式写入 APK，这里改回压缩以缩小安装包
+    packaging {
+        dex {
+            useLegacyPackaging = true
         }
     }
 
