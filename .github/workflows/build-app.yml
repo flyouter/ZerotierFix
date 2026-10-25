@@ -2,7 +2,8 @@ name: Build APP
 
 on:
   push:
-    # 只在推送 tag 时构建并自动发布 GitHub Release；分支推送不再触发
+    # dev 分支推送构建测试包；tag 推送构建并自动发布 GitHub Release
+    branches: [ "dev" ]
     tags: [ "*" ]
   pull_request:
     branches: [ "master" ]
