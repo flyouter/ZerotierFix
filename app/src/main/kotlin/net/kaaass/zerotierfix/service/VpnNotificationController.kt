@@ -47,7 +47,7 @@ class VpnNotificationController(private val service: VpnService) {
         createChannelIfNeeded(manager)
         val displayName = networkName?.takeIf { it.isNotBlank() } ?: networkIdStr
         return NotificationCompat.Builder(this.service, Constants.CHANNEL_ID)
-            .setPriority(1)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setForegroundServiceBehavior(
@@ -79,7 +79,54 @@ class VpnNotificationController(private val service: VpnService) {
      * @param networkName 网络名称；可能为 `null` 或空字符串
      */
     fun enterForeground(networkIdStr: String?, networkName: String?) {
-        val notification = buildConnected(networkIdStr, networkName)
+        startForegroundInternal(buildConnected(networkIdStr, networkName), "connected")
+    }
+
+    /**
+     * 显示“正在连接”通知并立即进入前台。
+     *
+     * `startForegroundService()` 要求服务在数秒内调用 `startForeground()`；在隧道
+     * 建立前先进入前台，既满足期限，也避免服务在连接窗口内被系统回收。
+     *
+     * 线程：可在任意线程调用。
+     */
+    fun enterForegroundConnecting() {
+        startForegroundInternal(buildConnecting(), "connecting")
+    }
+
+    /**
+     * 构建“正在连接”通知。
+     */
+    private fun buildConnecting(): Notification {
+        val manager = getNotificationManager()
+        createChannelIfNeeded(manager)
+        return NotificationCompat.Builder(this.service, Constants.CHANNEL_ID)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setForegroundServiceBehavior(
+                NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE
+            )
+            .setSmallIcon(R.drawable.ic_zerotier_symbol)
+            .setContentTitle(
+                this.service.getString(R.string.notification_title_connecting)
+            )
+            .setContentText(
+                this.service.getString(R.string.notification_text_connecting)
+            )
+            .setColor(
+                ContextCompat.getColor(
+                    this.service.applicationContext, R.color.zerotier_orange
+                )
+            )
+            .setContentIntent(createContentIntent())
+            .build()
+    }
+
+    /**
+     * 进入前台；区分资格/后台限制异常与其他失败，便于现场定位。
+     */
+    private fun startForegroundInternal(notification: Notification, phase: String) {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                 this.service.startForeground(
@@ -92,7 +139,13 @@ class VpnNotificationController(private val service: VpnService) {
             }
             this.foregroundStarted = true
         } catch (e: Exception) {
-            Log.e(TAG, "startForeground failed", e)
+            // systemExempted 在 Android 14+ 有资格校验；记录异常类型便于区分
+            // ForegroundServiceTypeNotAllowedException 与后台启动限制。
+            Log.e(
+                TAG,
+                "startForeground($phase) failed: ${e.javaClass.name}",
+                e
+            )
             this.foregroundStarted = false
         }
     }
@@ -144,9 +197,11 @@ class VpnNotificationController(private val service: VpnService) {
             val channelName = this.service.getString(R.string.channel_name)
             val description = this.service.getString(R.string.channel_description)
             val channel = NotificationChannel(
-                Constants.CHANNEL_ID, channelName, NotificationManager.IMPORTANCE_HIGH
+                Constants.CHANNEL_ID, channelName, NotificationManager.IMPORTANCE_LOW
             )
             channel.description = description
+            // 常驻连接通知不应在每次连接时响铃或弹横幅。
+            channel.setSound(null, null)
             manager.createNotificationChannel(channel)
         }
     }

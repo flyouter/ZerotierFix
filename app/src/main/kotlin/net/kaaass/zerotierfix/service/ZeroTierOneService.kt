@@ -228,11 +228,16 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
      */
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.d(TAG, "onStartCommand")
+        val startInForeground =
+            intent?.getBooleanExtra(EXTRA_START_IN_FOREGROUND, false) == true
+        if (startInForeground) {
+            // startForegroundService() 要求在数秒内进入前台；先展示“正在连接”，
+            // 再做网络 ID / 网络环境 / native 初始化校验。
+            notificationController.enterForegroundConnecting()
+        }
         if (intent == null) {
             Log.e(TAG, "NULL intent.  Cannot start")
-            markServiceStopped()
-            stopSelf(startId)
-            return Service.START_NOT_STICKY
+            return failStart(startId)
         }
         // 服务实例可能在上一次停止后被复用（切换网络），必须清除停止信号。
         this.stopping = false
@@ -249,18 +254,14 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
             val lastActivatedNetworkId = networkRepository.getLastActivatedNetworkId()
             if (lastActivatedNetworkId == null) {
                 Log.e(TAG, "Couldn't find last activated connection")
-                markServiceStopped()
-                stopSelf(startId)
-                return Service.START_NOT_STICKY
+                return failStart(startId)
             }
             targetNetworkId = lastActivatedNetworkId
             Log.i(TAG, "Got Always On request for ZeroTier")
         }
         if (targetNetworkId == 0L) {
             Log.e(TAG, "Network ID not provided to service")
-            markServiceStopped()
-            stopSelf(startId)
-            return Service.START_NOT_STICKY
+            return failStart(startId)
         }
         this.networkId = targetNetworkId
 
@@ -271,9 +272,7 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
         if (currentNetworkInfo == NetworkInfoUtils.CurrentConnection.CONNECTION_NONE) {
             // 未连接网络
             Toast.makeText(this, R.string.toast_no_network, Toast.LENGTH_SHORT).show()
-            markServiceStopped()
-            stopSelf(this.mStartID)
-            return Service.START_NOT_STICKY
+            return failStart(this.mStartID)
         }
 
         // 移动网络下是否允许 ZeroTier 出口由 NetworkPolicyController 静默处理：
@@ -310,9 +309,7 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
                         Log.d(TAG, "ZeroTierOne Node Initialized")
                     } else {
                         Log.e(TAG, "Error starting ZT1 Node: $result")
-                        markServiceStopped()
-                        stopSelf(startId)
-                        return Service.START_NOT_STICKY
+                        return failStart(startId)
                     }
 
                     // 持久化当前节点信息
@@ -342,9 +339,7 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
                 }
             } catch (e: Exception) {
                 Log.e(TAG, e.toString(), e)
-                markServiceStopped()
-                stopSelf(startId)
-                return Service.START_NOT_STICKY
+                return failStart(startId)
             }
         }
         store.setServiceState(ServiceState.RUNNING)
@@ -352,6 +347,18 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
         refreshNetworkListState()
         joinNetwork(targetNetworkId)
         return Service.START_STICKY
+    }
+
+    /**
+     * 启动失败的统一收尾：移除前台通知、写停止状态并结束服务。
+     *
+     * 必须与 `startForegroundService()` 的期限配合：失败路径也要尽快离开前台，
+     * 否则会留下“正在连接”的常驻通知或触发 `ForegroundServiceDidNotStartInTimeException`。
+     */
+    private fun failStart(startId: Int): Int {
+        markServiceStopped()
+        stopSelf(startId)
+        return Service.START_NOT_STICKY
     }
 
     /**
@@ -991,6 +998,13 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
         const val MSG_LEAVE_NETWORK = 2
         const val ZT1_NETWORK_ID = "com.zerotier.one.network_id"
         const val ZT1_USE_DEFAULT_ROUTE = "com.zerotier.one.use_default_route"
+
+        /**
+         * 由应用主动以 `startForegroundService()` 启动时为 `true`。
+         *
+         * 系统 Always-on VPN 以普通 `startService()` 启动，不带该标记。
+         */
+        const val EXTRA_START_IN_FOREGROUND = "com.zerotier.one.start_in_foreground"
 
         /** 停止流程等待工作线程退出的总预算，避免主线程路径 ANR。 */
         private const val TEARDOWN_TIMEOUT_MS = 2_000L

@@ -56,18 +56,50 @@ class AndroidVpnServiceCommands @Inject constructor(
             store.setServiceState(ServiceState.STARTING)
             val intent = Intent(context, ZeroTierOneService::class.java)
                 .putExtra(ZeroTierOneService.ZT1_NETWORK_ID, networkId)
-            val component = try {
-                context.startService(intent)
-            } catch (e: Exception) {
-                Log.e(TAG, "startService failed", e)
-                null
-            }
+                .putExtra(ZeroTierOneService.EXTRA_START_IN_FOREGROUND, true)
+            val component = startServiceCompat(intent)
             if (component == null) {
                 store.setServiceState(ServiceState.STOPPED)
                 false
             } else {
                 true
             }
+        }
+    }
+
+    /**
+     * 启动 VPN 服务：优先以 `startForegroundService()` 启动，失败时回退到普通
+     * `startService()`。
+     *
+     * - 前台启动能让服务在连接窗口内立即进入前台，避免被系统回收；
+     * - 部分 OEM/系统会拒绝从后台提升前台服务，此时 WireGuard 式的普通
+     *   `startService()` 仍可能成功，作为第二道兜底。
+     *
+     * @return 系统接受的 ComponentName；两种方式都失败时返回 `null`
+     */
+    private fun startServiceCompat(intent: Intent): ComponentName? {
+        return try {
+            context.startForegroundService(intent)
+        } catch (e: Exception) {
+            Log.w(
+                TAG,
+                "startForegroundService failed (${e.javaClass.simpleName}), " +
+                    "falling back to startService",
+                e
+            )
+            startServiceFallback(intent)
+        }
+    }
+
+    /**
+     * 普通 `startService()` 兜底。
+     */
+    private fun startServiceFallback(intent: Intent): ComponentName? {
+        return try {
+            context.startService(intent)
+        } catch (e: Exception) {
+            Log.e(TAG, "startService also failed", e)
+            null
         }
     }
 
