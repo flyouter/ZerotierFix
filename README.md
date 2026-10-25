@@ -36,8 +36,6 @@
 
 </p>
 
-> 截图中的网络名称、Network ID、节点 ID 与通信地址等已使用演示数据或做隐藏处理。
-
 ## 简介
 
 Zerotier Fix 是一个第三方的 ZeroTier Android 客户端，界面使用现代 Material 3 设计重新
