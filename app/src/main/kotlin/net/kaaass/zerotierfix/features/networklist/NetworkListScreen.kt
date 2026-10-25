@@ -24,7 +24,6 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.Share
-import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -70,6 +69,7 @@ import net.kaaass.zerotierfix.ui.common.StatusPill
 import net.kaaass.zerotierfix.ui.common.StatusTone
 import net.kaaass.zerotierfix.ui.common.ZerotierTopBar
 import net.kaaass.zerotierfix.ui.common.zerotierSwitchColors
+import net.kaaass.zerotierfix.ui.icons.ZeroTierIcons
 import net.kaaass.zerotierfix.ui.theme.ZerotierFixTheme
 import net.kaaass.zerotierfix.vpn.engine.ServiceState
 
@@ -128,7 +128,7 @@ fun NetworkListScreen(
                     }
                     IconButton(onClick = onOpenMoon) {
                         Icon(
-                            imageVector = Icons.Outlined.Star,
+                            imageVector = ZeroTierIcons.Moon,
                             contentDescription = stringResource(R.string.moon_orbit_activity)
                         )
                     }

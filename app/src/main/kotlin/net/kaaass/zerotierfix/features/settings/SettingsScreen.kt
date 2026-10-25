@@ -16,7 +16,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Share
-import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -44,6 +43,7 @@ import net.kaaass.zerotierfix.ui.common.SettingDivider
 import net.kaaass.zerotierfix.ui.common.SettingsGroup
 import net.kaaass.zerotierfix.ui.common.SwitchRow
 import net.kaaass.zerotierfix.ui.common.ZerotierTopBar
+import net.kaaass.zerotierfix.ui.icons.ZeroTierIcons
 import net.kaaass.zerotierfix.ui.theme.ZerotierFixTheme
 
 /**
@@ -118,7 +118,7 @@ fun SettingsScreen(
                     summary = stringResource(R.string.planet_use_custom_summary),
                     checked = state.isPlanetUseCustom,
                     onCheckedChange = onSetPlanetUseCustom,
-                    icon = Icons.Outlined.Star
+                    icon = ZeroTierIcons.Planet
                 )
                 SettingDivider()
                 ActionRow(

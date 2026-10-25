@@ -23,7 +23,6 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Share
-import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -68,6 +67,7 @@ import net.kaaass.zerotierfix.ui.common.MonoText
 import net.kaaass.zerotierfix.ui.common.StatusPill
 import net.kaaass.zerotierfix.ui.common.StatusTone
 import net.kaaass.zerotierfix.ui.common.ZerotierTopBar
+import net.kaaass.zerotierfix.ui.icons.ZeroTierIcons
 import net.kaaass.zerotierfix.ui.theme.ZerotierFixTheme
 
 /**
@@ -145,7 +145,7 @@ fun MoonOrbitScreen(
                 modifier = Modifier.padding(padding)
             )
             state.moons.isEmpty() -> EmptyState(
-                icon = Icons.Outlined.Star,
+                icon = ZeroTierIcons.Moon,
                 title = stringResource(R.string.moon_empty_title),
                 description = stringResource(R.string.moon_empty_message),
                 actionLabel = stringResource(R.string.add),
