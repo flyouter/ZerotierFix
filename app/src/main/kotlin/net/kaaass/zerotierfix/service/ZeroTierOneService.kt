@@ -2,7 +2,6 @@ package net.kaaass.zerotierfix.service
 
 import android.app.Service
 import android.content.Intent
-import android.content.pm.ServiceInfo
 import android.net.VpnService
 import android.os.Binder
 import android.os.Build
@@ -122,8 +121,6 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
     private var nextBackgroundTaskDeadline = 0L
     private val notificationController = VpnNotificationController(this)
 
-    /** 是否已通过 [startForeground] 进入前台。 */
-    private var foregroundStarted = false
     private var node: Node? = null
     private var tunTapAdapter: TunTapAdapter? = null
     private var udpCom: UdpCom? = null
@@ -390,7 +387,7 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
             }
 
             // 先撤销通知/前台状态，后续任何一步卡住都不会留下“已连接”假象。
-            leaveForeground()
+            notificationController.leaveForeground()
 
             var threadsStopped = joinThread(this.udpThread, deadline, "UDP")
             this.udpThread = null
@@ -434,7 +431,7 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
             store.setServiceState(ServiceState.STOPPED)
             store.setConnectedNetworks(null)
             store.clearVirtualNetworkConfigs()
-            leaveForeground()
+            notificationController.leaveForeground()
             if (!stopSelfResult(this.mStartID)) {
                 Log.e(TAG, "stopSelfResult() failed!")
             }
@@ -483,7 +480,7 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
         } catch (e: Exception) {
             Log.e(TAG, e.toString(), e)
         } finally {
-            leaveForeground()
+            notificationController.leaveForeground()
             serviceScope.cancel()
             super.onDestroy()
         }
@@ -495,7 +492,7 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
             closeVpnSocket()
             stopSelf(this.mStartID)
         } finally {
-            leaveForeground()
+            notificationController.leaveForeground()
         }
         super.onRevoke()
     }
@@ -846,7 +843,7 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
         store.setNodeStatus(null)
         store.setConnectedNetworks(null)
         store.clearVirtualNetworkConfigs()
-        leaveForeground()
+        notificationController.leaveForeground()
     }
 
     /**
@@ -928,52 +925,7 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
         if (this.stopping) {
             return
         }
-        enterForeground(networkIdStr, networkName)
-    }
-
-    /**
-     * 进入前台服务：通知由系统托管，服务/进程结束时自动移除。
-     *
-     * 先构建通知再尝试 `startForeground`；失败时只记录日志，不退回
-     * 普通通知 —— 普通通知无法随服务/进程结束被系统移除，正是本次要修掉的问题。
-     *
-     * @param networkIdStr 网络 ID 的字符串形式
-     * @param networkName 网络名称；可能为 `null`
-     */
-    private fun enterForeground(networkIdStr: String?, networkName: String?) {
-        val notification = notificationController.buildConnected(networkIdStr, networkName)
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                startForeground(
-                    VpnNotificationController.NOTIFICATION_ID,
-                    notification,
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_SYSTEM_EXEMPTED
-                )
-            } else {
-                startForeground(VpnNotificationController.NOTIFICATION_ID, notification)
-            }
-            this.foregroundStarted = true
-        } catch (e: Exception) {
-            Log.e(TAG, "startForeground failed", e)
-            this.foregroundStarted = false
-        }
-    }
-
-    /**
-     * 退出前台并移除通知。
-     *
-     * 幂等：`startForeground` 未成功时也会按 ID 取消，避免旧通知残留。
-     */
-    private fun leaveForeground() {
-        if (this.foregroundStarted) {
-            try {
-                stopForeground(STOP_FOREGROUND_REMOVE)
-            } catch (e: Exception) {
-                Log.e(TAG, "stopForeground failed", e)
-            }
-        }
-        this.foregroundStarted = false
-        this.notificationController.cancel()
+        notificationController.enterForeground(networkIdStr, networkName)
     }
 
     override fun startMulticastScanners(disableIpv6: Boolean) {

@@ -4,10 +4,13 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.net.VpnService
 import android.os.Build
+import android.util.Log
 
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
@@ -24,11 +27,16 @@ import net.kaaass.zerotierfix.util.Constants
  */
 class VpnNotificationController(private val service: VpnService) {
 
+    /** 是否已通过 `startForeground` 进入前台。 */
+    private var foregroundStarted = false
+
     /**
-     * 构建已连接通知。
+     * 构建并显示连接通知。
      *
      * 正文优先显示网络名称，名称为空时回退到网络 ID，
      * 保证通知栏始终能看出当前连接的是哪个网络。
+     *
+     * 线程：可在任意线程调用。
      *
      * @param networkIdStr 网络 ID 的字符串形式；可能为 `null`
      * @param networkName 网络名称；可能为 `null` 或空字符串
@@ -57,6 +65,55 @@ class VpnNotificationController(private val service: VpnService) {
             )
             .setContentIntent(createContentIntent())
             .build()
+    }
+
+    /**
+     * 构建连接通知并进入前台服务。
+     *
+     * 先构建通知再尝试 `startForeground`；失败时只记录日志，不退回普通通知 ——
+     * 普通通知无法随服务/进程结束被系统移除。
+     *
+     * 线程：可在任意线程调用。
+     *
+     * @param networkIdStr 网络 ID 的字符串形式；可能为 `null`
+     * @param networkName 网络名称；可能为 `null` 或空字符串
+     */
+    fun enterForeground(networkIdStr: String?, networkName: String?) {
+        val notification = buildConnected(networkIdStr, networkName)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                this.service.startForeground(
+                    NOTIFICATION_ID,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_SYSTEM_EXEMPTED
+                )
+            } else {
+                this.service.startForeground(NOTIFICATION_ID, notification)
+            }
+            this.foregroundStarted = true
+        } catch (e: Exception) {
+            Log.e(TAG, "startForeground failed", e)
+            this.foregroundStarted = false
+        }
+    }
+
+    /**
+     * 退出前台并移除通知。
+     *
+     * 幂等：`startForeground` 未成功时也会按 ID 取消，避免旧通知残留。
+     *
+     * 线程：可在任意线程调用。
+     */
+    fun leaveForeground() {
+        if (this.foregroundStarted) {
+            try {
+                this.service.stopForeground(Service.STOP_FOREGROUND_REMOVE)
+            } catch (e: Exception) {
+                Log.e(TAG, "stopForeground failed", e)
+            }
+        }
+        this.foregroundStarted = false
+        cancel()
     }
 
     /**
@@ -120,6 +177,8 @@ class VpnNotificationController(private val service: VpnService) {
     companion object {
         /** 连接状态通知 ID，同时作为前台服务通知 ID。 */
         const val NOTIFICATION_ID = 5919812
+
+        private const val TAG = "VpnNotification"
 
         /**
          * 清理可能由旧版本或已结束进程遗留的通知。
