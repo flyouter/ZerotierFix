@@ -23,6 +23,12 @@ android {
         versionName = "1.0.11+core.1.16.2"
 
         testInstrumentationRunner = 'androidx.test.runner.AndroidJUnitRunner'
+
+        // 仅支持 64 位；同时过滤依赖 AAR 带来的 32 位 .so，
+        // 避免 universal 包在 32 位设备上安装后运行期找不到 ZeroTier JNI。
+        ndk {
+            abiFilters 'arm64-v8a', 'x86_64'
+        }
     }
 
     buildTypes {
