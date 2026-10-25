@@ -14,12 +14,6 @@
 
 <p align="center">
 
-  <a href="https://github.com/flyouter/ZerotierFix/releases">
-
-    <img src="https://img.shields.io/github/v/release/flyouter/ZerotierFix" alt="Release">
-
-  </a>
-
   <img src="https://img.shields.io/badge/license-GPLv2-blue" alt="License">
 
 </p>
