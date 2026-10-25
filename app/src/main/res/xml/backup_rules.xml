@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Android 11 及以下的备份规则。
+
+    ZeroTier 节点身份与网络配置不适合跨设备恢复：恢复旧身份会产生重复节点，
+    自定义 Planet 也可能指向已失效的服务器。
+-->
+<full-backup-content>
+    <exclude domain="file" path="identity.secret" />
+    <exclude domain="file" path="identity.public" />
+    <exclude domain="file" path="planet" />
+    <exclude domain="file" path="planet.custom" />
+    <exclude domain="file" path="networks.d/" />
+    <exclude domain="file" path="moons.d/" />
+    <exclude domain="database" path="ztfixdb" />
+    <exclude domain="database" path="ztfixdb-wal" />
+    <exclude domain="database" path="ztfixdb-shm" />
+    <exclude domain="database" path="ztfixdb-journal" />
+</full-backup-content>
