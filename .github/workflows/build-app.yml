@@ -44,6 +44,16 @@ jobs:
           else
             ./gradlew --no-daemon assembleRelease
           fi
+      - name: Verify 16 KB page alignment
+        shell: bash
+        run: |
+          shopt -s nullglob
+          APKS=(app/build/outputs/apk/*/*.apk)
+          if [ ${#APKS[@]} -eq 0 ]; then
+            echo "::error::No APKs found for 16 KB alignment check"
+            exit 1
+          fi
+          tools/check-16kb.sh "${APKS[@]}"
       - uses: actions/upload-artifact@v4
         if: github.event_name == 'pull_request'
         name: Upload app APK
