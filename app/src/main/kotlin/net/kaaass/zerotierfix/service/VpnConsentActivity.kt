@@ -68,6 +68,9 @@ class VpnConsentActivity : ComponentActivity() {
         if (!applyNetworkId(intent)) {
             return
         }
+        // 页面已在前台驱动收敛，取消磁贴的超时回滚：用户在系统授权弹窗停留
+        // 多久都不应丢失连接意图。
+        controller.holdIntent()
 
         consentRequested = savedInstanceState?.getBoolean(KEY_CONSENT_REQUESTED) ?: false
         resultHandled = savedInstanceState?.getBoolean(KEY_RESULT_HANDLED) ?: false
@@ -89,6 +92,7 @@ class VpnConsentActivity : ComponentActivity() {
         // 新点击意味着此前的授权流程已不再需要结果；
         // 即使旧授权回调迟到，也不会覆盖当前收敛过程。
         resultHandled = true
+        controller.holdIntent()
         startSettleIfNeeded()
     }
 

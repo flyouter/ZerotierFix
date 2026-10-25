@@ -1,6 +1,9 @@
 package net.kaaass.zerotierfix.service
 
+import android.content.ComponentName
 import android.content.Context
+import android.os.SystemClock
+import android.service.quicksettings.TileService
 import android.util.Log
 import android.widget.Toast
 
@@ -15,6 +18,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
@@ -72,6 +76,7 @@ class QuickTileController @Inject constructor(
 
     private var refreshJob: Job? = null
     private var intentWatchdog: Job? = null
+    private var lastListeningRequest = 0L
 
     /**
      * 磁贴状态流，由网络列表、上次连接记录、加载状态、用户期望与服务状态合并而成。
@@ -92,9 +97,35 @@ class QuickTileController @Inject constructor(
         )
     }.stateIn(scope, SharingStarted.Eagerly, QuickTileState())
 
+    init {
+        // 面板关闭期间服务状态变化时，请求 SystemUI 重新绑定磁贴，避免磁贴
+        // 长期显示旧状态。requestListeningState 内部已做节流。
+        scope.launch {
+            vpnEngine.serviceState.collect {
+                requestTileListeningState()
+            }
+        }
+    }
+
     /** 网络列表是否已加载完成。 */
     val isLoaded: Boolean
         get() = loaded.value
+
+    /**
+     * 等待网络列表首次加载完成。
+     *
+     * 磁贴服务冷启动时 `onClick()` 往往早于 `refresh()` 完成；有界等待可以
+     * 避免第一次点击被直接丢弃。超时后由调用方决定如何提示用户。
+     *
+     * @param timeoutMs 最长等待时间
+     */
+    suspend fun awaitLoaded(timeoutMs: Long = LOAD_TIMEOUT_MS) {
+        if (loaded.value) return
+        if (refreshJob?.isActive != true) {
+            refresh()
+        }
+        withTimeoutOrNull(timeoutMs) { loaded.first { it } }
+    }
 
     /**
      * 立即计算当前状态，供磁贴点击时同步决策。
@@ -175,6 +206,18 @@ class QuickTileController @Inject constructor(
     }
 
     /**
+     * 前台页面已接手连接意图：停止超时回滚。
+     *
+     * 系统 VPN 授权弹窗的停留时间不可控，[toggle] 的看门狗只用于“页面没有被
+     * 拉起”的情况。页面出现后应交给它自己的收敛循环，否则用户阅读授权说明
+     * 超过超时时间，意图会被清除，授权后也不会连接。
+     */
+    fun holdIntent() {
+        intentWatchdog?.cancel()
+        intentWatchdog = null
+    }
+
+    /**
      * 在后台推进到期望状态。
      *
      * 只适用于断开（`startService` 才有后台限制）。若循环中发现用户随后
@@ -183,6 +226,32 @@ class QuickTileController @Inject constructor(
     fun startSettle() {
         scope.launch {
             settleAwait(allowConnect = false)
+        }
+    }
+
+    /**
+     * 从磁贴直接连接：不启动 Activity，服务启动后由应用级作用域继续收敛。
+     *
+     * 已授权时磁贴点击走这条路径，快捷设置面板保持展开；只有首次授权或
+     * 系统拒绝后台启动服务时才回退到 Activity。
+     *
+     * @param networkId 目标网络 ID
+     * @return `true` 表示已处理（连接已发起或已提示用户）；`false` 表示
+     *         系统拒绝启动服务，调用方应回退到 Activity 路径
+     */
+    suspend fun connectFromTile(networkId: Long): Boolean {
+        if (!prepareTarget(networkId)) {
+            abandonIntent()
+            return true
+        }
+        return if (vpnEngine.start(networkId)) {
+            // `startService` 已同步写入 STARTING，settleAwait 不会重复启动。
+            scope.launch {
+                settleAwait(allowConnect = true)
+            }
+            true
+        } else {
+            false
         }
     }
 
@@ -272,16 +341,11 @@ class QuickTileController @Inject constructor(
         } != null
 
     /**
-     * 连接目标网络并等待服务稳定。
+     * 校验目标网络并记录为最近连接的网络。
      *
-     * @return 服务最终是否处于运行状态
+     * @return 可以继续启动服务时返回 `true`
      */
-    private suspend fun connectOnce(): Boolean {
-        val networkId = currentTargetNetworkId()
-        if (networkId == null) {
-            toast(R.string.quick_tile_toast_no_network)
-            return false
-        }
+    private suspend fun prepareTarget(networkId: Long): Boolean {
         val network = withContext(ioDispatcher) {
             networkRepository.getNetworkSummary(networkId)
         }
@@ -292,11 +356,27 @@ class QuickTileController @Inject constructor(
         if (!checkNetworkAvailable()) {
             return false
         }
-
         withContext(ioDispatcher) {
             networkRepository.setLastActivated(networkId)
         }
         lastActivated.value = networkId
+        return true
+    }
+
+    /**
+     * 连接目标网络并等待服务稳定。
+     *
+     * @return 服务最终是否处于运行状态
+     */
+    private suspend fun connectOnce(): Boolean {
+        val networkId = currentTargetNetworkId()
+        if (networkId == null) {
+            toast(R.string.quick_tile_toast_no_network)
+            return false
+        }
+        if (!prepareTarget(networkId)) {
+            return false
+        }
 
         if (!vpnEngine.start(networkId)) {
             toast(R.string.toast_connect_failed)
@@ -349,6 +429,28 @@ class QuickTileController @Inject constructor(
         Toast.makeText(context, messageRes, Toast.LENGTH_SHORT).show()
     }
 
+    /**
+     * 请求 SystemUI 重新绑定磁贴以刷新状态。
+     *
+     * 面板打开时 SystemUI 本来就在监听；该方法用于面板关闭期间的状态变化。
+     * 节流避免状态抖动时频繁触发绑定。
+     */
+    private fun requestTileListeningState() {
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastListeningRequest < LISTENING_REQUEST_INTERVAL_MS) {
+            return
+        }
+        lastListeningRequest = now
+        try {
+            TileService.requestListeningState(
+                context,
+                ComponentName(context, ZeroTierTileService::class.java)
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "requestListeningState failed", e)
+        }
+    }
+
     companion object {
         private const val TAG = "QuickTileController"
 
@@ -357,5 +459,11 @@ class QuickTileController @Inject constructor(
 
         /** 点击连接后等待前台页面开始收敛的最长时间。 */
         private const val CONNECT_INTENT_TIMEOUT_MS = 10_000L
+
+        /** 磁贴首次点击等待网络列表加载的最长时间。 */
+        private const val LOAD_TIMEOUT_MS = 1_500L
+
+        /** requestListeningState 的最小调用间隔。 */
+        private const val LISTENING_REQUEST_INTERVAL_MS = 500L
     }
 }
