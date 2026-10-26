@@ -13,6 +13,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 import net.kaaass.zerotierfix.data.repository.NetworkRepository
+import net.kaaass.zerotierfix.service.QuickTileController
 import net.kaaass.zerotierfix.service.ServiceLiveness
 import net.kaaass.zerotierfix.service.VpnNotificationController
 import net.kaaass.zerotierfix.service.ZeroTierOneService
@@ -32,6 +33,10 @@ class ZerotierFixApplication : Application() {
     /** 延迟获取仓库，确保 Room 的构造与首次打开发生在 IO 线程。 */
     @Inject
     lateinit var networkRepository: Provider<NetworkRepository>
+
+    /** 延迟获取磁贴控制器，构造它会连带打开数据库。 */
+    @Inject
+    lateinit var quickTileController: Provider<QuickTileController>
 
     override fun onCreate() {
         super.onCreate()
@@ -58,6 +63,15 @@ class ZerotierFixApplication : Application() {
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             getSharedPreferences("${packageName}_preferences", Context.MODE_PRIVATE)
             runCatching { networkRepository.get().getAllNetworks() }
+            // 磁贴控制器必须随进程常驻：磁贴状态的变化只能由进程内的
+            // requestListeningState 推给 SystemUI。若等到磁贴首次绑定才创建，
+            // App 内的连接/断开不会刷新 SystemUI 缓存的旧磁贴，退出 App 后
+            // 磁贴仍可能显示“已连接”。
+            runCatching {
+                quickTileController.get().refresh()
+            }.onFailure {
+                Log.w("Application", "Failed to start quick tile controller", it)
+            }
         }
 
         Log.i("Application", "Starting Application")

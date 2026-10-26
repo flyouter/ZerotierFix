@@ -77,6 +77,7 @@ class QuickTileController @Inject constructor(
     private var refreshJob: Job? = null
     private var intentWatchdog: Job? = null
     private var lastListeningRequest = 0L
+    private var pendingListeningRequest: Job? = null
 
     /**
      * 磁贴状态流，由网络列表、上次连接记录、加载状态、用户期望与服务状态合并而成。
@@ -434,14 +435,29 @@ class QuickTileController @Inject constructor(
      * 请求 SystemUI 重新绑定磁贴以刷新状态。
      *
      * 面板打开时 SystemUI 本来就在监听；该方法用于面板关闭期间的状态变化。
-     * 节流避免状态抖动时频繁触发绑定。
+     * 节流避免状态抖动时频繁触发绑定，但节流窗口内的请求会合并为一次延迟
+     * 请求而不是直接丢弃：快速“连接后立刻断开”只留下最后一次变化时，丢掉
+     * 请求会让磁贴长期停留在旧状态。
      */
     private fun requestTileListeningState() {
         val now = SystemClock.elapsedRealtime()
-        if (now - lastListeningRequest < LISTENING_REQUEST_INTERVAL_MS) {
+        val remaining = LISTENING_REQUEST_INTERVAL_MS - (now - lastListeningRequest)
+        if (remaining <= 0) {
+            dispatchListeningRequest()
             return
         }
-        lastListeningRequest = now
+        if (pendingListeningRequest?.isActive == true) return
+        pendingListeningRequest = scope.launch {
+            delay(remaining)
+            dispatchListeningRequest()
+        }
+    }
+
+    /**
+     * 立即向 SystemUI 发出监听请求。
+     */
+    private fun dispatchListeningRequest() {
+        lastListeningRequest = SystemClock.elapsedRealtime()
         try {
             TileService.requestListeningState(
                 context,
