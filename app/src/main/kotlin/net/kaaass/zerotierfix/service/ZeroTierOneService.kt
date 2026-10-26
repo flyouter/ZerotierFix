@@ -326,6 +326,16 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
                     thread.start()
                 }
 
+                // 必须先加入网络，再启动后台任务线程：native 的网络配置请求挂在
+                // 5 秒一次的 ping 检查里，线程若先跑完第一次 tick，join 之后就要再等
+                // 最多 5 秒才会发出配置请求。
+                try {
+                    joinNetwork(targetNetworkId)
+                } catch (e: Exception) {
+                    // join 失败不应阻止后台线程启动，否则服务会停在无法自愈的 RUNNING。
+                    Log.e(TAG, "Failed to join network before service thread", e)
+                }
+
                 // 创建并启动 VPN 服务线程
                 if (this.vpnThread == null) {
                     val thread = Thread(this, "ZeroTier Service Thread")
@@ -349,7 +359,6 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
         store.setServiceState(ServiceState.RUNNING)
         refreshNodeStatus()
         refreshNetworkListState()
-        joinNetwork(targetNetworkId)
         return Service.START_STICKY
     }
 
