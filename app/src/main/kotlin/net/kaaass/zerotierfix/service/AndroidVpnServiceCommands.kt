@@ -49,11 +49,16 @@ class AndroidVpnServiceCommands @Inject constructor(
     @Volatile
     private var boundService: ZeroTierOneService? = null
 
+    /** 最近一次发出启动请求的时间，用于给 `STARTING` 留出冷启动宽限期。 */
+    @Volatile
+    private var startRequestedAt = 0L
+
     private var connection: ServiceConnection? = null
 
     override suspend fun startService(networkId: Long): Boolean = withContext(dispatcher) {
         mutex.withLock {
             store.setServiceState(ServiceState.STARTING)
+            startRequestedAt = SystemClock.elapsedRealtime()
             val intent = Intent(context, ZeroTierOneService::class.java)
                 .putExtra(ZeroTierOneService.ZT1_NETWORK_ID, networkId)
                 .putExtra(ZeroTierOneService.EXTRA_START_IN_FOREGROUND, true)
@@ -253,6 +258,12 @@ class AndroidVpnServiceCommands @Inject constructor(
     }
 
     override suspend fun refreshState(): Unit = withContext(dispatcher) {
+        // 先确认服务真的存在再决定是否绑定：服务已死时 `bindService` 会重新
+        // 创建服务实例，把真实状态掩盖成「仍在运行」，磁贴也就一直显示已连接。
+        if (!ServiceLiveness.isRunning(context, ZeroTierOneService::class.java)) {
+            reconcileDeadService()
+            return@withContext
+        }
         val state = store.serviceState.value
         if (state != ServiceState.RUNNING && state != ServiceState.STARTING) {
             if (state == ServiceState.UNKNOWN) {
@@ -274,6 +285,46 @@ class AndroidVpnServiceCommands @Inject constructor(
     }
 
     /**
+     * 服务实际不存在时纠正进程内的残留状态。
+     *
+     * 进程被系统杀死后 [VpnStateStore] 里的 `RUNNING` / `STARTING` 可能残留；
+     * 不纠正会让磁贴与页面一直显示「已连接」。`STARTING` 保留宽限期，避免把
+     * 刚发出启动请求、服务尚未创建的冷启动误判为停止。
+     */
+    private fun reconcileDeadService() {
+        when (store.serviceState.value) {
+            ServiceState.RUNNING -> {
+                if (store.compareAndSetServiceState(ServiceState.RUNNING, ServiceState.STOPPED)) {
+                    clearStaleState("RUNNING")
+                }
+            }
+            ServiceState.STARTING -> {
+                val elapsed = SystemClock.elapsedRealtime() - startRequestedAt
+                if (startRequestedAt > 0L && elapsed >= START_GRACE_MS &&
+                    store.compareAndSetServiceState(ServiceState.STARTING, ServiceState.STOPPED)
+                ) {
+                    clearStaleState("STARTING")
+                }
+            }
+            ServiceState.UNKNOWN -> {
+                store.compareAndSetServiceState(ServiceState.UNKNOWN, ServiceState.STOPPED)
+            }
+            ServiceState.STOPPED -> Unit
+        }
+    }
+
+    /**
+     * 清空服务存活期间才会有意义的数据，避免页面展示过期状态。
+     */
+    private fun clearStaleState(from: String) {
+        Log.i(TAG, "Service not running; reconciled $from -> STOPPED")
+        store.setNodeStatus(null)
+        store.setConnectedNetworks(null)
+        store.clearVirtualNetworkConfigs()
+        store.setBinderState(BinderState.DISCONNECTED)
+    }
+
+    /**
      * 获取服务 binder；未运行时返回 `null`。
      *
      * 必须在 [mutex] 内调用。
@@ -283,6 +334,9 @@ class AndroidVpnServiceCommands @Inject constructor(
      */
     private suspend fun acquire(timeoutMs: Long): ZeroTierOneService? {
         boundService?.let { return it }
+        // 服务被系统杀死时连接可能已失效但还没有释放；先解绑，避免这条绑定
+        // 一直挂着让系统重新拉起服务。
+        release()
         val deferred = CompletableDeferred<ZeroTierOneService?>()
         val conn = BinderConnection(deferred)
         connection = conn
@@ -316,7 +370,22 @@ class AndroidVpnServiceCommands @Inject constructor(
      * 必须在 [mutex] 内调用。
      */
     private fun release() {
-        val conn = connection ?: return
+        detachConnection(connection)
+    }
+
+    /**
+     * 解绑指定连接。
+     *
+     * 同时可能被命令线程与主线程的 [ServiceConnection] 回调调用，因此用
+     * `@Synchronized` 保护，并用调用方身份过滤已经失效的旧连接。
+     *
+     * @param conn 待解绑连接；为 `null` 或已不是当前连接时忽略
+     */
+    @Synchronized
+    private fun detachConnection(conn: ServiceConnection?) {
+        if (conn == null || connection !== conn) {
+            return
+        }
         connection = null
         boundService = null
         try {
@@ -373,7 +442,9 @@ class AndroidVpnServiceCommands @Inject constructor(
         override fun onServiceDisconnected(name: ComponentName?) {
             if (connection !== this) return
             boundService = null
-            store.setBinderState(BinderState.DISCONNECTED)
+            // 服务被杀死后绑定不会自动解除，必须显式释放；否则系统会保持
+            // 绑定并可能重新创建服务，磁贴也就无法确认服务已经停止。
+            detachConnection(this)
             if (!deferred.isCompleted) {
                 deferred.complete(null)
             }
@@ -382,7 +453,7 @@ class AndroidVpnServiceCommands @Inject constructor(
         override fun onBindingDied(name: ComponentName?) {
             if (connection !== this) return
             boundService = null
-            store.setBinderState(BinderState.DISCONNECTED)
+            detachConnection(this)
             store.setServiceState(ServiceState.STOPPED)
             if (!deferred.isCompleted) {
                 deferred.complete(null)
@@ -392,7 +463,7 @@ class AndroidVpnServiceCommands @Inject constructor(
         override fun onNullBinding(name: ComponentName?) {
             if (connection !== this) return
             boundService = null
-            store.setBinderState(BinderState.DISCONNECTED)
+            detachConnection(this)
             if (!deferred.isCompleted) {
                 deferred.complete(null)
             }
@@ -403,6 +474,9 @@ class AndroidVpnServiceCommands @Inject constructor(
         private const val TAG = "AndroidVpnCommands"
         private const val CONNECT_TIMEOUT_MS = 500L
         private const val STOP_CONNECT_TIMEOUT_MS = 500L
+
+        /** 发出启动请求后，允许服务尚未出现在系统服务列表中的宽限期。 */
+        private const val START_GRACE_MS = 8_000L
 
         /** 停止后确认服务消失的最长等待时间。 */
         private const val STOP_VERIFY_TIMEOUT_MS = 2_000L

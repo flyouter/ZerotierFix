@@ -168,6 +168,20 @@ class QuickTileController @Inject constructor(
     }
 
     /**
+     * 点击前校准真实服务状态。
+     *
+     * [VpnEngine.refreshState] 会先确认服务是否真的在运行，不会把已死的服务
+     * 重新绑定起来；磁贴据此决定点击方向，避免在服务已死时执行错误的断开。
+     */
+    suspend fun reconcileServiceState() {
+        try {
+            vpnEngine.refreshState()
+        } catch (e: Exception) {
+            Log.w(TAG, "reconcileServiceState failed", e)
+        }
+    }
+
+    /**
      * 翻转用户期望状态。
      *
      * 只更新期望值，不在此处执行连接：连接需要由前台 Activity 驱动，

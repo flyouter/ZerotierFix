@@ -111,6 +111,9 @@ class ZeroTierTileService : TileService() {
             toast(R.string.quick_tile_toast_loading)
             return
         }
+        // 点击前先校准真实状态：服务被系统杀死后进程内状态可能残留 RUNNING，
+        // 直接用缓存状态会执行错误的断开操作。
+        controller.reconcileServiceState()
         if (controller.currentStatus() == QuickTileStatus.UNAVAILABLE) {
             toast(R.string.quick_tile_toast_no_network)
             return
