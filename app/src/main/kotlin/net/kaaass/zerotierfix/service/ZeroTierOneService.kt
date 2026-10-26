@@ -759,6 +759,11 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
         var reconfigure: ReconfigureRequest? = null
         DatabaseUtils.writeLock.lock()
         try {
+            // 停止流程可能在上一处检查之后启动；持锁后再确认一次，避免停止后写回旧配置。
+            if (this.stopping) {
+                Log.d(TAG, "Ignore network config update while stopping")
+                return 0
+            }
             // 查找网络 ID 对应的配置
             val network = networkRepository.getNetworkSummary(networkId)
                 ?: throw IllegalStateException("Database is inconsistent")
@@ -771,7 +776,34 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
                         "Network Type: " + cfg.type + " Network Status: " + cfg.status +
                             " Network Name: " + cfg.name + " "
                     )
-                    // 将网络配置的更新交给第一次 Update
+                    val dto = VirtualNetworkConfigMapper.toDto(cfg)
+                    if (dto.status == NetworkStatus.OK &&
+                        tunnelConfigurator.hasUsableAssignedAddresses(cfg, disableIPv6)
+                    ) {
+                        // 回连时 native 会先回调磁盘缓存的网络配置。直接沿用可省去一次
+                        // 服务端往返；配置未变化时 native 不会再回调 CONFIG_UPDATE，因此
+                        // 这里必须写入状态并建立隧道。
+                        Log.i(
+                            TAG,
+                            "Apply usable UP configuration: addresses=" +
+                                dto.assignedAddresses.size
+                        )
+                        val isChanged = setVirtualNetworkConfigAndUpdateDatabase(network, cfg)
+                        store.setVirtualNetworkConfig(networkId, dto)
+                        reconfigure = ReconfigureRequest(
+                            isChanged = isChanged,
+                            network = network,
+                            config = dto,
+                            notifyStatus = false
+                        )
+                    } else {
+                        // 冷启动无缓存：等待服务端下发 CONFIG_UPDATE。
+                        Log.i(
+                            TAG,
+                            "Ignore unusable UP configuration: status=" + dto.status +
+                                ", addresses=" + dto.assignedAddresses.size
+                        )
+                    }
                 }
                 VirtualNetworkConfigOperation.VIRTUAL_NETWORK_CONFIG_OPERATION_CONFIG_UPDATE -> {
                     Log.i(TAG, "Network Config Update!")
@@ -809,7 +841,7 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
     private fun applyReconfigure(request: ReconfigureRequest) {
         val configUpdated = request.isChanged && updateTunnelConfig(request.network)
         val networkIsOk = request.config.status == NetworkStatus.OK
-        if (configUpdated || !networkIsOk) {
+        if (request.notifyStatus && (configUpdated || !networkIsOk)) {
             store.emitStatusNotice(request.config)
         }
     }
@@ -999,11 +1031,14 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
      * @property isChanged 配置内容是否发生变化
      * @property network 数据库中的网络摘要
      * @property config 变化后的实时配置
+     * @property notifyStatus 是否发出“已连接”等状态提示；缓存配置不提示，避免与
+     *  真正的服务端更新重复
      */
     private data class ReconfigureRequest(
         val isChanged: Boolean,
         val network: NetworkSummary,
-        val config: VirtualNetworkConfigDto
+        val config: VirtualNetworkConfigDto,
+        val notifyStatus: Boolean = true
     )
 
     companion object {

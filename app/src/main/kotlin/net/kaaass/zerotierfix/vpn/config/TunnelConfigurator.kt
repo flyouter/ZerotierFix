@@ -21,6 +21,7 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.net.Inet6Address
 import java.net.InetAddress
+import java.net.InetSocketAddress
 import java.nio.ByteBuffer
 
 /**
@@ -110,6 +111,39 @@ class TunnelConfigurator(
 ) {
 
     /**
+     * 判断配置中是否存在可用于建立隧道的分配地址。
+     *
+     * 与 [configure] 使用同一套过滤规则，避免“状态显示已连接”与“实际能建隧道”
+     * 口径不一致。
+     *
+     * @param config 虚拟网络配置
+     * @param disableIpv6 是否禁用 IPv6
+     * @return 至少有一个可用地址时返回 `true`
+     */
+    fun hasUsableAssignedAddresses(
+        config: VirtualNetworkConfig,
+        disableIpv6: Boolean
+    ): Boolean {
+        val addresses = config.assignedAddresses ?: return false
+        return addresses.any { vpnAddress ->
+            routeFor(vpnAddress, disableIpv6) != null
+        }
+    }
+
+    /**
+     * 计算分配地址对应的路由；地址不可用时返回 `null`。
+     */
+    private fun routeFor(
+        vpnAddress: InetSocketAddress,
+        disableIpv6: Boolean
+    ): InetAddress? {
+        if (disableIpv6 && vpnAddress.address is Inet6Address) {
+            return null
+        }
+        return InetAddressUtils.addressToRoute(vpnAddress.address, vpnAddress.port)
+    }
+
+    /**
      * 应用指定网络的最新配置。
      *
      * 网络刚加入、尚未分配地址时不会调用 `establish()`，而是等待下一次配置更新。
@@ -145,16 +179,15 @@ class TunnelConfigurator(
         val assignedAddresses = virtualNetworkConfig.assignedAddresses
         Log.i(TAG, "address length: " + assignedAddresses.size)
         val vpnAddresses = assignedAddresses.mapNotNull { vpnAddress ->
-            if (disableIpv6 && vpnAddress.address is Inet6Address) {
+            val route = routeFor(vpnAddress, disableIpv6)
+            if (route == null) {
+                // 禁用 IPv6 是主动过滤，不算错误；其余情况记录以便排查。
+                if (!(disableIpv6 && vpnAddress.address is Inet6Address)) {
+                    Log.e(TAG, "NULL route calculated!")
+                }
                 null
             } else {
-                val route = InetAddressUtils.addressToRoute(vpnAddress.address, vpnAddress.port)
-                if (route == null) {
-                    Log.e(TAG, "NULL route calculated!")
-                    null
-                } else {
-                    vpnAddress to route
-                }
+                vpnAddress to route
             }
         }
         if (vpnAddresses.isEmpty()) {
