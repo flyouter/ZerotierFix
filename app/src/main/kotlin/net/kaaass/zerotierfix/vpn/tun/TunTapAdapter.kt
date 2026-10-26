@@ -45,6 +45,26 @@ class TunTapAdapter(
     private var receiveThread: Thread? = null
     private var vpnSocket: ParcelFileDescriptor? = null
 
+    /**
+     * 是否允许数据面通过 ZeroTier 转发。
+     *
+     * 为 `false` 时隧道与路由保持不变，但从 TUN 读出和从 ZeroTier 收到的帧
+     * 全部丢弃，使 ZeroTier 内网不可达。
+     */
+    @Volatile
+    private var accessAllowed = true
+
+    /**
+     * 设置是否允许数据面通过 ZeroTier 转发。
+     *
+     * 线程：可在任意线程调用。
+     *
+     * @param allowed 是否允许
+     */
+    fun setAccessAllowed(allowed: Boolean) {
+        this.accessAllowed = allowed
+    }
+
     private fun addMulticastRoutes() {
     }
 
@@ -139,12 +159,18 @@ class TunTapAdapter(
                             var noDataBeenRead = true
                             val readCount = this@TunTapAdapter.input!!.read(buffer.array())
                             if (readCount > 0) {
+                                val readData = ByteArray(readCount)
+                                System.arraycopy(buffer.array(), 0, readData, 0, readCount)
+                                buffer.clear()
+                                noDataBeenRead = false
+                                if (!this@TunTapAdapter.accessAllowed) {
+                                    // 隧道保持连接，仅丢弃出站帧。
+                                    continue
+                                }
                                 DebugLog.d(
                                     TAG,
                                     "Sending packet to ZeroTier. $readCount bytes."
                                 )
-                                val readData = ByteArray(readCount)
-                                System.arraycopy(buffer.array(), 0, readData, 0, readCount)
                                 val ipVersion = IPPacketUtils.getIPVersion(readData)
                                 if (ipVersion.toInt() == 4) {
                                     this@TunTapAdapter.handleIPv4Packet(readData)
@@ -153,8 +179,6 @@ class TunTapAdapter(
                                 } else {
                                     Log.e(TAG, "Unknown IP version")
                                 }
-                                buffer.clear()
-                                noDataBeenRead = false
                             }
                             if (noDataBeenRead) {
                                 Thread.sleep(10)
@@ -494,6 +518,10 @@ class TunTapAdapter(
                 " Ether type: " + SdkStringUtils.etherTypeToString(etherType) +
                 " VLAN ID: " + vlanId + " Frame Length: " + frameData.size
         )
+        if (!this.accessAllowed) {
+            // 隧道保持连接，仅丢弃入站帧。
+            return
+        }
         if (this.vpnSocket == null) {
             Log.e(TAG, "vpnSocket is null!")
         } else if (this.input == null || this.output == null) {

@@ -102,12 +102,21 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
         TunnelConfigurator(this, networkRepository)
     }
 
-    /** 移动网络出口策略；网络或设置变化时静默重建隧道。 */
+    /** 移动数据策略；隧道始终保持连接，只切换数据面是否允许访问 ZeroTier 内网。 */
     private val networkPolicy by lazy {
-        NetworkPolicyController(this, settingsRepository, serviceScope) {
-            reconfigureForCellularPolicy()
+        NetworkPolicyController(this, settingsRepository, serviceScope) { allowed ->
+            updateMobileDataAccess(allowed)
         }
     }
+
+    /**
+     * 当前是否允许数据面通过 ZeroTier 转发。
+     *
+     * 蜂窝下关闭“允许移动网络下使用”时为 `false`：VPN 与路由保持不变，
+     * [TunTapAdapter] 丢弃收发帧，内网不可达。
+     */
+    @Volatile
+    private var mobileDataAccessAllowed = true
 
     private val stopStateLock = Any()
 
@@ -129,6 +138,7 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
     private val notificationController = VpnNotificationController(this)
 
     private var node: Node? = null
+    @Volatile
     private var tunTapAdapter: TunTapAdapter? = null
     private var udpCom: UdpCom? = null
     private var udpThread: Thread? = null
@@ -274,9 +284,8 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
             Toast.makeText(this, R.string.toast_no_network, Toast.LENGTH_SHORT).show()
             return failStart(this.mStartID)
         }
-
-        // 移动网络下是否允许 ZeroTier 出口由 NetworkPolicyController 静默处理：
-        // 服务照常启动，只跳过默认路由，不再弹提示或阻止启动。
+        // 蜂窝下是否允许访问 ZeroTier 内网只影响数据面，不阻止隧道建立。
+        this.mobileDataAccessAllowed = networkPolicy.isMobileDataAllowed
         networkPolicy.start()
 
         // 启动 ZT 服务
@@ -297,7 +306,10 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
                 if (this.node == null) {
                     val dataStore = this.dataStore!!
                     this.udpCom = UdpCom(this, this.svrSocket)
-                    this.tunTapAdapter = TunTapAdapter(this, networkId)
+                    val adapter = TunTapAdapter(this, networkId)
+                    this.tunTapAdapter = adapter
+                    // 先发布实例再读取开关，避免策略回调与创建并发时漏掉关闭状态。
+                    adapter.setAccessAllowed(this.mobileDataAccessAllowed)
 
                     // 创建节点对象并初始化
                     this.node = Node(System.currentTimeMillis())
@@ -903,17 +915,17 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
     }
 
     /**
-     * 移动网络出口策略变化后重建隧道。
+     * 更新数据面是否允许访问 ZeroTier 内网。
      *
-     * 只有该网络启用了“通过 ZeroTier 路由”时才安装默认路由，出口策略才会
-     * 影响隧道配置；否则跳过，避免 Wi-Fi 与移动网络切换时无谓重建。
+     * 由 [NetworkPolicyController] 在网络或设置变化时回调。只切换
+     * [TunTapAdapter] 的收发闸门，不重建隧道、不停止服务。
+     *
+     * @param allowed 是否允许访问
      */
-    private fun reconfigureForCellularPolicy() {
-        val networkId = this.networkId
-        if (networkRepository.getNetworkConfig(networkId)?.isRouteViaZeroTier != true) {
-            return
-        }
-        reconfigureNetwork(networkId)
+    private fun updateMobileDataAccess(allowed: Boolean) {
+        mobileDataAccessAllowed = allowed
+        tunTapAdapter?.setAccessAllowed(allowed)
+        Log.i(TAG, "Mobile data access allowed: $allowed")
     }
 
     /**
@@ -925,8 +937,7 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
     private fun updateTunnelConfig(network: NetworkSummary): Boolean =
         tunnelConfigurator.configure(
             network,
-            this.disableIPv6,
-            networkPolicy.isDefaultRouteAllowed
+            this.disableIPv6
         )
 
     override val vpnService: VpnService

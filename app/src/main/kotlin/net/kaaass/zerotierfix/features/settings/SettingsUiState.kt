@@ -5,7 +5,7 @@ import net.kaaass.zerotierfix.ui.common.UiText
 /**
  * 设置页面状态。
  *
- * @property isCellularDataAllowed 是否允许在移动网络下通过 ZeroTier 出口路由流量
+ * @property isCellularDataAllowed 是否允许在移动网络下访问 ZeroTier 内网
  * @property isIpv6Disabled 是否禁用 IPv6
  * @property isPlanetUseCustom 是否使用自定义 planet
  * @property hasCustomPlanetFile 是否已配置自定义 planet 文件

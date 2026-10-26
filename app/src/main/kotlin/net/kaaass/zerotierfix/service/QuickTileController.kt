@@ -411,7 +411,8 @@ class QuickTileController @Inject constructor(
     /**
      * 检查当前是否有可用网络。
      *
-     * 移动网络下是否允许 ZeroTier 出口由服务侧的出口策略处理，这里不再拦截。
+     * 蜂窝网络下是否允许访问 ZeroTier 内网由数据面策略处理，
+     * 不影响隧道建立，这里只检查网络是否存在。
      *
      * @return 有网络时返回 `true`；否则提示并返回 `false`
      */

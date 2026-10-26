@@ -18,23 +18,28 @@ import net.kaaass.zerotierfix.data.repository.SettingsRepository
 import net.kaaass.zerotierfix.util.NetworkInfoUtils
 
 /**
- * 移动网络出口策略。
+ * 移动数据访问策略。
  *
- * 当“允许移动网络下使用”关闭且当前默认网络为蜂窝时，不安装默认路由
- * （`0.0.0.0/0`、`::/0`），流量直接走移动网络，不经过 ZeroTier 出口点；
- * 网络或设置变化时回调 [onPolicyChanged]，由服务重建隧道。
+ * “允许移动网络下使用”关闭且当前默认网络为蜂窝时，不允许数据面访问 ZeroTier
+ * 内网；隧道本身始终保持连接。策略变化（网络切换或设置变化）时回调
+ * [onAccessChanged]，由服务切换 [net.kaaass.zerotierfix.vpn.tun.TunTapAdapter]
+ * 的收发闸门。
+ *
+ * 该设置只决定蜂窝网络下能否访问 ZeroTier 内网；是否把默认流量
+ * （`0.0.0.0/0`）交给 ZeroTier 由每个网络的“通过 ZeroTier 路由”开关控制，
+ * 两者互不影响。
  *
  * VPN 运行时 Android 对 VPN 宿主应用暴露的默认网络是底层物理网络（或携带底层
  * transport 的 VPN 网络），因此可以直接用 [NetworkInfoUtils] 判断当前连接类型。
  *
- * 线程：[start] 与 [stop] 内部串行化，可在任意线程调用；[isDefaultRouteAllowed]
+ * 线程：[start] 与 [stop] 内部串行化，可在任意线程调用；[isMobileDataAllowed]
  * 可在任意线程读取。
  */
 class NetworkPolicyController(
     private val context: Context,
     private val settingsRepository: SettingsRepository,
     private val scope: CoroutineScope,
-    private val onPolicyChanged: () -> Unit
+    private val onAccessChanged: (Boolean) -> Unit
 ) {
 
     private val connectivityManager =
@@ -55,14 +60,14 @@ class NetworkPolicyController(
     private var started = false
 
     /**
-     * 当前是否允许安装默认路由（ZeroTier 出口点）。
+     * 当前网络下是否允许访问 ZeroTier 内网。
      *
      * 任意线程可读；每次读取重新查询当前网络，避免网络切换防抖期间读到旧值。
      *
-     * @return 允许安装默认路由时返回 `true`
+     * @return 允许访问时返回 `true`
      */
-    val isDefaultRouteAllowed: Boolean
-        get() = shouldInstallDefaultRoute(
+    val isMobileDataAllowed: Boolean
+        get() = isAllowed(
             NetworkInfoUtils.getNetworkInfoCurrentConnection(context),
             settingsRepository.isCellularDataAllowed
         )
@@ -94,7 +99,7 @@ class NetworkPolicyController(
         try {
             connectivityManager.registerDefaultNetworkCallback(networkCallback)
         } catch (e: Exception) {
-            // 注册失败时仍可读取策略，只是不会随网络变化自动重建隧道。
+            // 注册失败时仍可按启动时的状态放行，只是不会随网络变化切换访问。
             Log.e(TAG, "registerDefaultNetworkCallback failed", e)
             started = false
             return
@@ -105,26 +110,23 @@ class NetworkPolicyController(
                 connection,
                 settingsRepository.settings
             ) { connection, settings ->
-                // 无网络时保持上一次策略，避免切换瞬间误装出口路由。
+                // 无网络时保持上一次策略，避免切换瞬间误判。
                 if (connection == NetworkInfoUtils.CurrentConnection.CONNECTION_NONE) {
                     null
                 } else {
-                    !shouldInstallDefaultRoute(connection, settings.isCellularDataAllowed)
+                    isAllowed(connection, settings.isCellularDataAllowed)
                 }
-            }.collect { restricted ->
-                if (restricted == null) {
+            }.collect { allowed ->
+                if (allowed == null) {
                     return@collect
                 }
-                val isFirst = previous == null
-                if (previous == restricted) {
+                if (previous == allowed) {
                     return@collect
                 }
-                previous = restricted
-                // 初始状态由隧道配置直接读取，只有后续变化才需要重建。
-                if (!isFirst) {
-                    Log.i(TAG, "Cellular exit policy changed: restricted=$restricted")
-                    onPolicyChanged()
-                }
+                previous = allowed
+                // 首次也回调，让服务与数据面闸门在策略启动时立即对齐。
+                Log.i(TAG, "Mobile data access allowed: $allowed")
+                onAccessChanged(allowed)
             }
         }
     }
@@ -166,13 +168,13 @@ class NetworkPolicyController(
         private const val NETWORK_SETTLE_DELAY_MS = 800L
 
         /**
-         * 根据连接类型与设置判断是否允许安装默认路由。
+         * 根据连接类型与设置判断当前网络下是否允许访问 ZeroTier 内网。
          *
          * @param connection 当前连接类型
-         * @param isCellularDataAllowed 是否允许在移动网络下使用 ZeroTier 出口
-         * @return 允许安装默认路由时返回 `true`
+         * @param isCellularDataAllowed 是否允许在移动网络下访问 ZeroTier 内网
+         * @return 允许访问时返回 `true`
          */
-        internal fun shouldInstallDefaultRoute(
+        internal fun isAllowed(
             connection: NetworkInfoUtils.CurrentConnection,
             isCellularDataAllowed: Boolean
         ): Boolean = isCellularDataAllowed ||

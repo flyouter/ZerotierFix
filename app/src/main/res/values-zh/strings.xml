@@ -56,7 +56,7 @@
     <string name="preferences_network_disable_ipv6">禁用 IPv6</string>
     <string name="preferences_network_disable_ipv6_summary">需要手动断开、重连使配置生效</string>
     <string name="preferences_network_use_cell_data">允许移动网络下使用</string>
-    <string name="preferences_network_use_cell_data_summary">关闭后，移动网络下不经过 ZeroTier 出口点，流量直接走移动网络</string>
+    <string name="preferences_network_use_cell_data_summary">关闭后，移动网络下无法访问 ZeroTier 内网节点；VPN 隧道保持连接</string>
     <string name="reset_planet">重置 Planet</string>
     <string name="settings">设置</string>
     <string name="status_label">状态:</string>

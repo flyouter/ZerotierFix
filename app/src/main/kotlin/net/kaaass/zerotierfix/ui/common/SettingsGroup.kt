@@ -252,7 +252,7 @@ private fun SettingsGroupPreview() {
             SettingsGroup(title = "网络") {
                 SwitchRow(
                     title = "允许移动数据",
-                    summary = "在移动网络下通过 ZeroTier 出口路由流量",
+                    summary = "在移动网络下允许访问 ZeroTier 内网",
                     checked = true,
                     onCheckedChange = {}
                 )

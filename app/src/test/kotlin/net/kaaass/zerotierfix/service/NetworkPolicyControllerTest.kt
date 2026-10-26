@@ -7,17 +7,17 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * [NetworkPolicyController] 出口策略判断的纯函数测试。
+ * [NetworkPolicyController] 移动数据策略判断的纯函数测试。
  */
 class NetworkPolicyControllerTest {
 
     /**
-     * 蜂窝且未允许移动网络时不得安装默认路由。
+     * 蜂窝且未允许移动网络时不得访问 ZeroTier 内网。
      */
     @Test
     fun cellularNotAllowed() {
         assertFalse(
-            NetworkPolicyController.shouldInstallDefaultRoute(
+            NetworkPolicyController.isAllowed(
                 CurrentConnection.CONNECTION_MOBILE,
                 false
             )
@@ -25,12 +25,12 @@ class NetworkPolicyControllerTest {
     }
 
     /**
-     * 允许移动网络时蜂窝也可以安装默认路由。
+     * 允许移动网络时蜂窝也可以访问 ZeroTier 内网。
      */
     @Test
     fun cellularAllowed() {
         assertTrue(
-            NetworkPolicyController.shouldInstallDefaultRoute(
+            NetworkPolicyController.isAllowed(
                 CurrentConnection.CONNECTION_MOBILE,
                 true
             )
@@ -43,7 +43,7 @@ class NetworkPolicyControllerTest {
     @Test
     fun nonCellularNotAllowed() {
         assertTrue(
-            NetworkPolicyController.shouldInstallDefaultRoute(
+            NetworkPolicyController.isAllowed(
                 CurrentConnection.CONNECTION_OTHER,
                 false
             )
@@ -51,12 +51,12 @@ class NetworkPolicyControllerTest {
     }
 
     /**
-     * 无网络时保持允许，由隧道配置逻辑自行决定是否重建。
+     * 无网络时不判定为受限，由启动检查单独提示无网络。
      */
     @Test
     fun noConnectionNotAllowed() {
         assertTrue(
-            NetworkPolicyController.shouldInstallDefaultRoute(
+            NetworkPolicyController.isAllowed(
                 CurrentConnection.CONNECTION_NONE,
                 false
             )
