@@ -137,6 +137,12 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
     private var nextBackgroundTaskDeadline = 0L
     private val notificationController = VpnNotificationController(this)
 
+    /** 最近一次展示「已连接」通知时的网络信息，供任务移除时重申前台通知。 */
+    @Volatile
+    private var lastConnectedNetworkIdStr: String? = null
+    @Volatile
+    private var lastConnectedNetworkName: String? = null
+
     private var node: Node? = null
     @Volatile
     private var tunTapAdapter: TunTapAdapter? = null
@@ -237,17 +243,30 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
      * 启动 ZT 服务，连接至给定网络或最近连接的网络。
      */
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        Log.d(TAG, "onStartCommand")
+        Log.d(TAG, "onStartCommand intent=${intent != null}")
+        // 系统按 START_STICKY 重启时 intent 为 null。不能直接放弃，否则进程
+        // 被杀后 VPN 永远无法自愈；改为复用「最近激活网络」的恢复路径。
+        val systemRestart = intent == null
+        if (systemRestart) {
+            // 停止流程中收到系统重启请求：保持停止，避免刚断开又被拉起。
+            if (this.stopping) {
+                Log.w(TAG, "Null intent while stopping; ignore")
+                return Service.START_NOT_STICKY
+            }
+            if (this.node != null) {
+                // 已在运行却收到 null intent：只更新 startId，避免重复 join 网络。
+                this.mStartID = startId
+                Log.w(TAG, "Null intent while already running; ignore")
+                return Service.START_STICKY
+            }
+        }
         val startInForeground =
             intent?.getBooleanExtra(EXTRA_START_IN_FOREGROUND, false) == true
-        if (startInForeground) {
-            // startForegroundService() 要求在数秒内进入前台；先展示“正在连接”，
-            // 再做网络 ID / 网络环境 / native 初始化校验。
+        if (startInForeground || systemRestart) {
+            // startForegroundService() 要求在数秒内进入前台；系统重启没有该期限，
+            // 也要尽快恢复前台状态，否则恢复后的服务容易被回收。后台
+            // startForeground 失败由 VpnNotificationController 捕获并记录。
             notificationController.enterForegroundConnecting()
-        }
-        if (intent == null) {
-            Log.e(TAG, "NULL intent.  Cannot start")
-            return failStart(startId)
         }
         // 服务实例可能在上一次停止后被复用（切换网络），必须清除停止信号。
         this.stopping = false
@@ -256,12 +275,21 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
 
         // 确定待启动的网络 ID
         val targetNetworkId: Long
-        if (intent.hasExtra(ZT1_NETWORK_ID)) {
+        if (intent != null && intent.hasExtra(ZT1_NETWORK_ID)) {
             // Intent 中指定了目标网络，直接使用此 ID
             targetNetworkId = intent.getLongExtra(ZT1_NETWORK_ID, 0)
         } else {
-            // 默认启用最近一次启动的网络
-            val lastActivatedNetworkId = networkRepository.getLastActivatedNetworkId()
+            // 默认启用最近一次启动的网络（Always-On 请求或系统重启恢复）
+            if (systemRestart) {
+                Log.i(TAG, "System restart with null intent; recovering last activated network")
+            }
+            val lastActivatedNetworkId = try {
+                networkRepository.getLastActivatedNetworkId()
+            } catch (e: Exception) {
+                // 读取失败不能冒泡到主线程，直接按启动失败处理。
+                Log.e(TAG, "Failed to read last activated network", e)
+                null
+            }
             if (lastActivatedNetworkId == null) {
                 Log.e(TAG, "Couldn't find last activated connection")
                 return failStart(startId)
@@ -466,6 +494,8 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
             store.setServiceState(ServiceState.STOPPED)
             store.setConnectedNetworks(null)
             store.clearVirtualNetworkConfigs()
+            this.lastConnectedNetworkIdStr = null
+            this.lastConnectedNetworkName = null
             notificationController.leaveForeground()
             if (!stopSelfResult(this.mStartID)) {
                 Log.e(TAG, "stopSelfResult() failed!")
@@ -530,6 +560,33 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
             notificationController.leaveForeground()
         }
         super.onRevoke()
+    }
+
+    /**
+     * 最近任务被移除时保持 VPN 运行。
+     *
+     * `stopWithTask` 默认就是 `false`，这里不停止服务，只重申前台通知以尽量
+     * 提高存活概率。部分 OEM（如 MIUI）会直接 force-stop 应用，此时本回调
+     * 不会触发，应用侧无法阻止；系统重启后的自愈由 [onStartCommand] 处理。
+     */
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        Log.i(TAG, "onTaskRemoved; keep VPN running, stopping=$stopping")
+        if (!this.stopping) {
+            try {
+                val networkIdStr = this.lastConnectedNetworkIdStr
+                if (networkIdStr != null) {
+                    notificationController.enterForeground(
+                        networkIdStr,
+                        this.lastConnectedNetworkName
+                    )
+                } else {
+                    notificationController.enterForegroundConnecting()
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to reassert foreground on task removal", e)
+            }
+        }
+        super.onTaskRemoved(rootIntent)
     }
 
     override fun run() {
@@ -911,6 +968,8 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
         store.setNodeStatus(null)
         store.setConnectedNetworks(null)
         store.clearVirtualNetworkConfigs()
+        this.lastConnectedNetworkIdStr = null
+        this.lastConnectedNetworkName = null
         notificationController.leaveForeground()
     }
 
@@ -1010,6 +1069,8 @@ class ZeroTierOneService : VpnService(), Runnable, EventListener,
         if (this.stopping) {
             return
         }
+        this.lastConnectedNetworkIdStr = networkIdStr
+        this.lastConnectedNetworkName = networkName
         notificationController.enterForeground(networkIdStr, networkName)
     }
 
